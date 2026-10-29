@@ -1718,9 +1718,26 @@ def lan_ip():
         s.close()
 
 
-# Start background monitor thread
+def render_keepalive():
+    """If deployed on Render, ping external URL every 10 min to prevent sleep on inactivity."""
+    url = (os.environ.get("RENDER_EXTERNAL_URL") or os.environ.get("KEEP_ALIVE_URL") or "").rstrip("/")
+    if not url:
+        return
+    time.sleep(60)
+    while True:
+        try:
+            req = urllib.request.Request(f"{url}/api/stats", headers={"User-Agent": "Render-KeepAlive"})
+            with urllib.request.urlopen(req, timeout=15):
+                pass
+        except Exception:
+            pass
+        time.sleep(600)  # Ping every 10 minutes (Render sleeps at 15 minutes)
+
+
+# Start background monitor and keepalive threads
 try:
     threading.Thread(target=monitor, daemon=True).start()
+    threading.Thread(target=render_keepalive, daemon=True).start()
 except Exception:
     pass
 

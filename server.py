@@ -242,6 +242,42 @@ def api_power(action):
     return jsonify(ok=True, msg=f"{action} sent")
 
 
+@app.post("/api/security/lockdown")
+@login_required
+def api_emergency_lockdown():
+    data = request.get_json(silent=True) or {}
+    pw = data.get("password", "")
+    if not check_password_hash(CFG["password_hash"], pw):
+        push_alert(f"Failed emergency lockdown attempt from {request.remote_addr}")
+        audit("emergency lockdown FAILED: invalid password")
+        return jsonify(error="Invalid master password confirmation"), 403
+
+    audit(f"EMERGENCY LOCKDOWN executed from {request.remote_addr}")
+    push_alert(f"🚨 EMERGENCY LOCKDOWN engaged from {request.remote_addr}")
+
+    # 1. Terminate web browsers to clear in-memory sessions & protect accounts
+    if IS_WIN:
+        for browser in ["chrome.exe", "msedge.exe", "brave.exe", "firefox.exe", "opera.exe"]:
+            subprocess.run(["taskkill", "/F", "/IM", browser], capture_output=True)
+    elif IS_MAC:
+        for app in ["Google Chrome", "Safari", "Brave Browser", "Firefox"]:
+            subprocess.run(["pkill", "-f", app], capture_output=True)
+
+    # 2. Delayed lock and sign-out so HTTP response returns cleanly
+    def do_lockdown():
+        time.sleep(1.0)
+        try:
+            power("lock")
+            time.sleep(0.5)
+            power("logoff")
+        except Exception:
+            pass
+
+    threading.Thread(target=do_lockdown, daemon=True).start()
+    return jsonify(ok=True, msg="Emergency Lockdown engaged. Browser sessions terminated, PC locked and signed out.")
+
+
+
 @app.post("/api/timer")
 @login_required
 def api_timer():
@@ -1949,6 +1985,15 @@ img { width: 100%; border-radius: 12px; margin-top: 8px; }
       </div>
     </div>
 
+    <!-- Emergency Theft Lockdown Card -->
+    <div class="card" style="border:1px solid rgba(245,158,11,0.35);background:rgba(245,158,11,0.05);margin-top:16px">
+      <h2 style="color:#fbbf24"><span>🚨 Emergency Theft Lockdown</span></h2>
+      <p style="font-size:12px;color:var(--mut);margin-bottom:12px;line-height:1.5">
+        Protect your accounts if your laptop is lost or stolen. Instantly terminates open web browsers (Chrome, Edge, Firefox, Brave) to wipe active session tokens, then locks the screen and signs out of Windows.
+      </p>
+      <button class="red" style="width:100%;padding:10px;font-weight:600;background:#d97706" onclick="emergencyLockdown()">🚨 Trigger Emergency Lockdown</button>
+    </div>
+
     <!-- Remote Uninstall Card -->
     <div class="card" style="border:1px solid rgba(239,68,68,0.3);background:rgba(239,68,68,0.05);margin-top:16px">
       <h2 style="color:#f87171"><span>⚠️ Remote System Uninstaller</span></h2>
@@ -2060,6 +2105,26 @@ async function remoteUninstall(){
     location.reload();
   } catch(e) {
     alert('Project-X-Nano uninstalled and process terminated.');
+  }
+}
+async function emergencyLockdown(){
+  const pw = prompt("⚠️ EMERGENCY LOCKDOWN CONFIRMATION:\n\nThis will force-terminate all open web browsers to protect your logged-in accounts, lock the screen, and sign out of Windows.\n\nEnter your Master Password to execute:");
+  if(!pw) return;
+  toast("Executing Emergency Lockdown...");
+  try {
+    const r = await fetch('/api/security/lockdown', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({password: pw})
+    });
+    const d = await r.json();
+    if(d.ok) {
+      alert("🔒 " + d.msg);
+    } else {
+      alert("❌ " + (d.error || "Lockdown failed"));
+    }
+  } catch(e) {
+    alert("Emergency Lockdown sent. Session terminated.");
   }
 }
 function timer(a){api('timer',{action:a,minutes:+$('mins').value})}

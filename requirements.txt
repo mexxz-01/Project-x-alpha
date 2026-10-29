@@ -1,0 +1,9 @@
+flask
+psutil
+pillow
+pyautogui
+pyperclip
+screen-brightness-control
+opencv-python-headless
+pycaw; sys_platform == "win32"
+comtypes; sys_platform == "win32"

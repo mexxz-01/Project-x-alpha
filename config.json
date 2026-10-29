@@ -1,0 +1,26 @@
+{
+  "port": 8765,
+  "host": "0.0.0.0",
+  "password_hash": "scrypt:32768:8:1$SIj13kDWHjlLDgSe$db61d6cbd364a24ef56d85763cdf7803c00a5b9f6e55caa9d8a20cbd5f210a944ef95a98161a42be94339684bacfe6c021145b43688841c2b2f6176c49a2397b",
+  "secret_key": "1ad46f899614dd58a8f94dc239cebe791b895d7134ddfbcc29e7c5e58eec1dfd",
+  "file_roots": [],
+  "ntfy_topic": "",
+  "battery_low": 20,
+  "terminal_enabled": true,
+  "terminal_timeout": 60,
+  "autostart_as_admin": false,
+  "commands": {
+    "Network info": "ipconfig",
+    "Flush DNS": "ipconfig /flushdns",
+    "Disk space": "wmic logicaldisk get caption,freespace,size",
+    "Clean temp files": "del /q /f /s %TEMP%\\*",
+    "Backup Documents": "robocopy %USERPROFILE%\\Documents %USERPROFILE%\\Documents_Backup /E /XO /R:1 /W:1"
+  },
+  "apps": {
+    "Notepad": "notepad.exe",
+    "Calculator": "calc.exe",
+    "File Explorer": "explorer.exe",
+    "Task Manager": "taskmgr.exe",
+    "Chrome": "start chrome"
+  }
+}

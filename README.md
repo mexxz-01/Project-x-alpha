@@ -31,6 +31,52 @@ irm https://raw.githubusercontent.com/mexxz-01/Project-x-alpha/main/setup.ps1 | 
 
 ---
 
+## 🚀 Multi-PC Fleet Remote Deployment
+
+Deploy Project-X-Nano across all computers on your local network without manually visiting each machine. Choose either WinRM or PsExec depending on your network setup:
+
+### Method 1: Using PowerShell Remoting (WinRM) — Recommended
+
+PowerShell Remoting allows native push execution across multiple Windows PCs in parallel using built-in Windows Remote Management.
+
+1. **(One-Time Setup on Main PC)**: If managing Workgroup or Home LAN PCs, allow TrustedHosts in PowerShell (Run as Administrator):
+   ```powershell
+   Set-Item WSMan:\localhost\Client\TrustedHosts -Value "*" -Force
+   ```
+
+2. **Run Fleet Deployment Script**:
+   ```powershell
+   $targetPCs = @("192.168.1.11", "192.168.1.12", "192.168.1.13", "192.168.1.14")
+   $cred = Get-Credential  # Enter the username and password for those PCs
+   Invoke-Command -ComputerName $targetPCs -Credential $cred -ScriptBlock {
+       irm https://raw.githubusercontent.com/mexxz-01/Project-x-alpha/main/setup.ps1 | iex
+   }
+   ```
+   *Alternatively, run the built-in helper script:*
+   ```powershell
+   .\deploy_fleet.ps1
+   ```
+
+> **How it works:** `Invoke-Command` connects securely to each PC in `$targetPCs`, executes the universal 1-line installer in memory, configures firewall rules, and launches the background server process on all PCs at once.
+
+---
+
+### Method 2: Using PsExec (Sysinternals)
+
+If target machines have administrator file sharing (`ADMIN$`) enabled:
+
+```cmd
+psexec \\192.168.1.11 -u AdminUser -p AdminPassword -d -s powershell -Command "irm https://raw.githubusercontent.com/mexxz-01/Project-x-alpha/main/setup.ps1 | iex"
+```
+
+> **Flag Breakdown:**
+> - `\\192.168.1.11` : Target PC IP address or computer name.
+> - `-u AdminUser -p AdminPassword` : Administrator credentials for the target PC.
+> - `-d` : Detached mode (returns immediately without waiting for process to exit).
+> - `-s` : Run as the elevated System account.
+
+---
+
 ## 📱 Android Controller APK
 
 Control your PC directly from your phone with the dedicated Android app:
@@ -52,7 +98,7 @@ Control your PC directly from your phone with the dedicated Android app:
 | **🎚️ Hardware Controls** | Smooth volume sliders, DDC/CI monitor brightness, and full media keys. |
 | **📁 Multi-Drive Explorer** | Browse `C:\`, `D:\`, USB drives, download files, and upload files remotely. |
 | **⏻ Power & Sleep** | Shut down, restart, lock, sleep, hibernate, abort pending shutdowns, and sleep timers. |
-| **🗑️ Remote Uninstall** | 1-click remote uninstaller cleans autostart registry, drops scheduled tasks, and terminates the background server. |
+| **🗑️ Remote Clean Uninstall** | 1-click remote uninstaller cleans autostart registry, drops scheduled tasks, terminates process, and purges all installation files/folders. |
 | **🛡️ Silent Background Process** | Zero black console window; runs cleanly in Windows Task Manager under Background Processes. |
 
 ---
@@ -64,11 +110,11 @@ If you ever need to completely remove Project-X-Nano from a machine:
 ### Option A: From the Web Dashboard (Remotely)
 1. Open the dashboard ➔ Go to **Power / System Maintenance**.
 2. Click **`🗑️ Uninstall Project-X-Nano Remotely`**.
-3. It will wipe all startup registry keys, scheduled tasks, firewall rules, and stop the server process.
+3. It will wipe all startup registry keys, scheduled tasks, firewall rules, terminate the background server, and automatically purge all installation folders (`%LOCALAPPDATA%\Project-X-Nano`) with zero leftover trace.
 
 ### Option B: Local 1-Line Command
 ```powershell
-powershell -Command "Stop-Process -Name Project-X-Nano -Force -ErrorAction SilentlyContinue; Remove-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'Project-X-Nano' -ErrorAction SilentlyContinue; schtasks /Delete /TN 'Project-X-Nano' /F 2>$null"
+powershell -Command "Stop-Process -Name Project-X-Nano -Force -ErrorAction SilentlyContinue; Remove-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'Project-X-Nano' -ErrorAction SilentlyContinue; schtasks /Delete /TN 'Project-X-Nano' /F 2>$null; Remove-Item -Path \"$env:LOCALAPPDATA\Project-X-Nano\" -Recurse -Force -ErrorAction SilentlyContinue"
 ```
 
 ---

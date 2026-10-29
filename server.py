@@ -1295,172 +1295,668 @@ def api_fleet_broadcast():
 
 
 # ---------------------------------------------------------------- UI
-PAGE = r"""<!doctype html><html><head><meta charset="utf-8">
+PAGE = r"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Remote PC</title>
-<link rel="manifest" href="/manifest.json"><meta name="theme-color" content="#0f1115">
+<title>RemotePC Pro</title>
+<link rel="manifest" href="/manifest.json"><meta name="theme-color" content="#090a10">
 <link rel="apple-touch-icon" href="/icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Remote PC">
+<meta name="apple-mobile-web-app-title" content="RemotePC">
 <style>
-:root{--bg:#0f1115;--card:#1a1d24;--fg:#e8eaf0;--mut:#8b91a1;--acc:#4f8cff;--red:#ff5d5d;--grn:#3ddc97}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px system-ui,sans-serif;padding:14px;max-width:560px;margin:auto}
-h1{font-size:20px;margin:6px 0 14px}h2{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--mut);margin:0 0 10px}
-.card{background:var(--card);border-radius:14px;padding:14px;margin-bottom:12px}
-.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-button,input{font:inherit;border-radius:10px;border:0;padding:11px 8px;background:#262b36;color:var(--fg)}
-button{cursor:pointer}button:active{transform:scale(.97)}
-.red{background:#3a1d22;color:var(--red)}.acc{background:var(--acc);color:#fff}
-input{width:100%;background:#12141a;border:1px solid #2a2f3b}
-.row{display:flex;gap:8px;margin-top:8px}.row>*{flex:1}
-.bar{height:8px;background:#12141a;border-radius:6px;overflow:hidden;margin:4px 0 10px}.bar>i{display:block;height:100%;background:var(--acc)}
-.stat{display:flex;justify-content:space-between;color:var(--mut);font-size:13px}
-#toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#000c;padding:10px 16px;border-radius:20px;display:none}
-img{width:100%;border-radius:10px;margin-top:8px}
-.proc{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #262b36;font-size:13px}
-.proc button{padding:4px 10px;font-size:12px}
+:root {
+  --bg: #090b12;
+  --bg-gradient: radial-gradient(circle at 50% 0%, #161c2e 0%, #090b12 80%);
+  --surface: #131722;
+  --surface-hover: #1a1f30;
+  --card-border: rgba(255, 255, 255, 0.08);
+  --fg: #f8fafc;
+  --mut: #94a3b8;
+  --acc: #3b82f6;
+  --acc-glow: rgba(59, 130, 246, 0.35);
+  --acc-gradient: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%);
+  --red: #ef4444;
+  --red-bg: rgba(239, 68, 68, 0.12);
+  --grn: #10b981;
+  --grn-bg: rgba(16, 185, 129, 0.12);
+  --amber: #f59e0b;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  background-image: var(--bg-gradient);
+  background-attachment: fixed;
+  color: var(--fg);
+  font: 14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif;
+  padding: 16px;
+  max-width: 860px;
+  margin: auto;
+  min-height: 100vh;
+}
+/* Top App Header */
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0 16px;
+  border-bottom: 1px solid var(--card-border);
+  margin-bottom: 14px;
+}
+.app-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.brand-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  background: var(--acc-gradient);
+  color: #fff;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--grn);
+  box-shadow: 0 0 10px var(--grn);
+  display: inline-block;
+  animation: pulse 2s infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.85); }
+}
+/* Tabs Navigation */
+.nav-tabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  margin-bottom: 14px;
+  scrollbar-width: none;
+}
+.nav-tabs::-webkit-scrollbar { display: none; }
+.nav-tab {
+  flex: 0 0 auto;
+  background: var(--surface);
+  border: 1px solid var(--card-border);
+  color: var(--mut);
+  padding: 8px 14px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+.nav-tab:hover {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+.nav-tab.active {
+  background: var(--acc-gradient);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 4px 14px var(--acc-glow);
+}
+/* Cards */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  padding: 16px;
+  margin-bottom: 14px;
+  box-shadow: 0 8px 24px -4px rgba(0,0,0,0.4);
+  transition: border-color 0.2s ease;
+}
+.card:hover {
+  border-color: rgba(255,255,255,0.12);
+}
+.card h2 {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--mut);
+  margin: 0 0 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+@media (max-width: 640px) {
+  .grid-2 { grid-template-columns: 1fr; }
+  .grid { grid-template-columns: repeat(2, 1fr); }
+}
+/* Buttons & Inputs */
+button {
+  font: inherit;
+  border-radius: 10px;
+  border: 1px solid var(--card-border);
+  padding: 10px 12px;
+  background: #1c2132;
+  color: var(--fg);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+button:hover {
+  background: #23293d;
+  border-color: rgba(255,255,255,0.15);
+}
+button:active {
+  transform: scale(0.97);
+}
+button.acc {
+  background: var(--acc-gradient);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 4px 12px var(--acc-glow);
+}
+button.acc:hover {
+  filter: brightness(1.1);
+}
+button.red {
+  background: var(--red-bg);
+  color: var(--red);
+  border-color: rgba(239, 68, 68, 0.25);
+}
+button.red:hover {
+  background: rgba(239, 68, 68, 0.2);
+}
+input, textarea, select {
+  font: inherit;
+  width: 100%;
+  background: #0d101a;
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: var(--fg);
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+input:focus, textarea:focus, select:focus {
+  border-color: var(--acc);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+.row {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.row > * { flex: 1; }
+/* Metrics & Progress Bars */
+.stat-box {
+  background: #0d101a;
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+.stat-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--mut);
+  margin-bottom: 6px;
+}
+.bar {
+  height: 6px;
+  background: #1c2132;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.bar > i {
+  display: block;
+  height: 100%;
+  background: var(--acc-gradient);
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+.bar-ram > i { background: linear-gradient(90deg, #8b5cf6, #ec4899); }
+.bar-disk > i { background: linear-gradient(90deg, #10b981, #14b8a6); }
+/* Custom range slider */
+input[type=range] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: #1c2132;
+  height: 8px;
+  border-radius: 4px;
+  padding: 0;
+  cursor: pointer;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--acc);
+  box-shadow: 0 2px 8px var(--acc-glow);
+  cursor: pointer;
+}
+/* Items & Process List */
+.proc {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  background: #0d101a;
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  margin-bottom: 6px;
+  font-size: 13px;
+  transition: all 0.15s ease;
+}
+.proc:hover {
+  border-color: rgba(255,255,255,0.12);
+}
+.badge {
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-weight: 600;
+}
+.badge-green { background: var(--grn-bg); color: var(--grn); }
+.badge-red { background: var(--red-bg); color: var(--red); }
+#toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15, 20, 32, 0.95);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: #fff;
+  padding: 10px 20px;
+  border-radius: 30px;
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  display: none;
+  z-index: 9999;
+}
+img { width: 100%; border-radius: 12px; margin-top: 8px; }
 </style></head><body>
-<div id="login" class="card" style="display:none"><h1>🔐 Remote PC</h1>
-<input id="pw" type="password" placeholder="Password"><div class="row"><button class="acc" onclick="login()">Log in</button></div></div>
 
+<!-- Login Modal -->
+<div id="login" class="card" style="display:none;max-width:380px;margin:80px auto">
+  <div style="text-align:center;margin-bottom:16px">
+    <div style="font-size:36px;margin-bottom:8px">🔐</div>
+    <h1 style="font-size:22px;margin:0">RemotePC Pro</h1>
+    <p style="color:var(--mut);font-size:13px;margin:4px 0 0">Enter your master password to authenticate</p>
+  </div>
+  <input id="pw" type="password" placeholder="Password (mexxz@2007)" style="margin-bottom:12px">
+  <button class="acc" style="width:100%" onclick="login()">Log In</button>
+</div>
+
+<!-- Main Application -->
 <div id="main" style="display:none">
-<h1>🖥️ <span id="host">Remote PC</span></h1>
+  <!-- Top App Header -->
+  <header class="app-header">
+    <div class="app-brand">
+      <span>🖥️</span>
+      <span id="host">RemotePC Pro</span>
+      <span class="brand-badge">PRO FLEET</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <span class="pulse-dot"></span>
+      <span style="font-size:12px;color:var(--grn);font-weight:600">ONLINE</span>
+      <button style="padding:5px 10px;font-size:12px" onclick="logout()">Log out</button>
+    </div>
+  </header>
 
-<div class="card" id="fleetCard">
-<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-<h2>👥 Multi-PC Fleet (<span id="fleetCount">1 PC</span>)</h2>
-<div>
-<button onclick="fleetRefresh()" style="padding:4px 8px;font-size:12px">🔄 Refresh</button>
-<button onclick="$('fleetAddBox').style.display=$('fleetAddBox').style.display==='none'?'block':'none'" style="padding:4px 8px;font-size:12px;margin-left:4px">➕ Add PC</button>
+  <!-- Modern Navigation Tabs -->
+  <nav class="nav-tabs">
+    <button class="nav-tab active" onclick="showTab('overview', this)">📊 Overview</button>
+    <button class="nav-tab" onclick="showTab('fleet', this)">👥 Fleet (<span id="tabFleetCount">1</span>)</button>
+    <button class="nav-tab" onclick="showTab('screen', this)">📺 Screen &amp; Cam</button>
+    <button class="nav-tab" onclick="showTab('controls', this)">🎮 Remote Controls</button>
+    <button class="nav-tab" onclick="showTab('files', this)">📁 Files &amp; Drives</button>
+    <button class="nav-tab" onclick="showTab('terminal', this)">💻 Terminal</button>
+  </nav>
+
+  <!-- 1. OVERVIEW TAB -->
+  <div id="tab-overview" class="tab-content">
+    <div class="grid-2">
+      <!-- System Telemetry -->
+      <div class="card">
+        <h2>⚡ System Health</h2>
+        <div class="stat-box">
+          <div class="stat-header"><span>CPU Load</span><span id="cpuT">0%</span></div>
+          <div class="bar"><i id="cpu" style="width:0%"></i></div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-header"><span>Memory Usage</span><span id="ramT">0%</span></div>
+          <div class="bar bar-ram"><i id="ram" style="width:0%"></i></div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-header"><span>Disk Space</span><span id="diskT">0%</span></div>
+          <div class="bar bar-disk"><i id="disk" style="width:0%"></i></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--mut);margin-top:8px">
+          <span id="osT">Windows</span>
+          <span id="batT">🔋 Checking…</span>
+        </div>
+      </div>
+
+      <!-- Quick Commands -->
+      <div class="card">
+        <h2>⚡ Quick Commands</h2>
+        <div class="grid" id="cmds"></div>
+        <pre id="cmdout" style="white-space:pre-wrap;font-size:11px;color:var(--mut);background:#0d101a;border:1px solid var(--card-border);border-radius:10px;padding:8px;max-height:140px;overflow:auto;margin:8px 0 0"></pre>
+      </div>
+    </div>
+
+    <!-- App Launchers & Web -->
+    <div class="card">
+      <h2>🚀 App Launchers &amp; Web Navigation</h2>
+      <div class="row" style="margin-bottom:10px">
+        <input id="url" placeholder="Open website on PC (e.g. youtube.com)">
+        <button class="acc" onclick="openUrl()" style="flex:0 0 120px">🌐 Open Link</button>
+      </div>
+      <div class="grid" id="apps"></div>
+    </div>
+
+    <!-- On-screen Message -->
+    <div class="card">
+      <h2>💬 Push Message to PC Screen</h2>
+      <div class="row">
+        <input id="msg" placeholder="Display message banner on PC screen…">
+        <button class="acc" onclick="sendMsg()" style="flex:0 0 130px">Send Message</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. FLEET TAB -->
+  <div id="tab-fleet" class="tab-content" style="display:none">
+    <div class="card">
+      <h2>
+        <span>👥 Multi-PC Fleet Manager</span>
+        <span id="fleetCount" class="badge badge-green">1 Active Node</span>
+      </h2>
+      <div class="row" style="margin-bottom:10px">
+        <input id="fleetSearch" placeholder="🔍 Search fleet (by hostname, IP, or group)…" oninput="filterFleet()">
+        <button onclick="fleetRefresh()" style="flex:0 0 100px">🔄 Refresh</button>
+        <button class="acc" onclick="$('fleetAddBox').style.display=$('fleetAddBox').style.display==='none'?'block':'none'" style="flex:0 0 90px">➕ Add PC</button>
+      </div>
+      
+      <div id="fleetAddBox" style="display:none;background:#0d101a;padding:12px;border-radius:12px;margin-bottom:12px;border:1px solid var(--card-border)">
+        <div style="font-weight:600;margin-bottom:8px">Register Remote Node</div>
+        <input id="fAddName" placeholder="PC Name (e.g. Gaming PC, Office Laptop)" style="margin-bottom:8px">
+        <input id="fAddUrl" placeholder="Node URL (e.g. http://192.168.1.50:8765 or Tailscale IP)" style="margin-bottom:8px">
+        <div class="row">
+          <button class="acc" onclick="addFleetNode()">Save Node</button>
+          <button onclick="$('fleetAddBox').style.display='none'">Cancel</button>
+        </div>
+      </div>
+
+      <div id="fleetList" style="display:flex;flex-direction:column;gap:8px;max-height:360px;overflow-y:auto"></div>
+
+      <div class="row" style="margin-top:12px">
+        <button onclick="autoAddDiscovered()">⚡ Auto-Register Discovered</button>
+        <button class="red" onclick="broadcastFleet('lock')">🔒 Emergency Lock All</button>
+        <button class="red" onclick="broadcastFleet('sleep')">🌙 Sleep All</button>
+      </div>
+    </div>
+
+    <!-- Discovered LAN Devices -->
+    <div class="card">
+      <h2>
+        <span>📡 Local Subnet Discovery</span>
+        <button onclick="discover()" style="padding:4px 10px;font-size:12px">🔍 Scan Subnet</button>
+      </h2>
+      <div id="devList" class="stat" style="flex-direction:column;gap:6px">Scanning subnet…</div>
+    </div>
+  </div>
+
+  <!-- 3. SCREEN & CAMERA TAB -->
+  <div id="tab-screen" class="tab-content" style="display:none">
+    <!-- Live Desktop Screen -->
+    <div class="card">
+      <h2>
+        <span>🖥️ Live Screen View</span>
+        <span id="screenStatusBadge" class="badge badge-green" style="display:none">LIVE STREAM</span>
+      </h2>
+      <div class="row">
+        <button id="liveB" class="acc" onclick="toggleScreenStream()">▶ Start Live Stream</button>
+        <button onclick="shot()">📸 Take Snapshot</button>
+        <button id="tapB" onclick="toggleTap()">🎯 Tap-to-Click: OFF</button>
+      </div>
+      <img id="shot" style="display:none;cursor:crosshair;box-shadow:0 6px 20px rgba(0,0,0,0.5)">
+    </div>
+
+    <!-- Live Webcam Feed -->
+    <div class="card">
+      <h2>
+        <span>📹 Remote Camera Feed</span>
+        <span id="camStatusBadge" class="badge badge-green" style="display:none">CAMERA LIVE</span>
+      </h2>
+      <div class="row">
+        <button id="camB" class="acc" onclick="toggleCamStream()">📹 Start Live Camera</button>
+        <button onclick="camShot()">📷 Single Snapshot</button>
+      </div>
+      <img id="camimg" style="display:none;box-shadow:0 6px 20px rgba(0,0,0,0.5)" onerror="toast('⚠ Webcam stream unavailable')">
+    </div>
+
+    <!-- Audio & Speech Alerts -->
+    <div class="card">
+      <h2>🔊 Audio &amp; Room Alerts</h2>
+      <div class="row">
+        <button onclick="sound('beep')">🔔 Play Alert Chime</button>
+        <button class="red" onclick="sound('alarm')">🚨 Find My PC Siren</button>
+      </div>
+      <div class="row">
+        <input id="say" placeholder="Type text to make the PC speak out loud…">
+        <button class="acc" onclick="speak()" style="flex:0 0 110px">🗣 Speak</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. CONTROLS TAB -->
+  <div id="tab-controls" class="tab-content" style="display:none">
+    <!-- Touchpad -->
+    <div class="card">
+      <h2>🖱️ Virtual Touchpad Trackpad</h2>
+      <div style="display:flex;gap:10px">
+        <div id="pad" style="flex:1;height:220px;background:#0d101a;border:1px dashed #2d3748;border-radius:14px;touch-action:none;display:flex;align-items:center;justify-content:center;color:#64748b;user-select:none;font-weight:500">
+          Touch &amp; Drag to Move Cursor · Tap to Click
+        </div>
+        <div id="scroll" style="width:50px;height:220px;background:#0d101a;border:1px dashed #2d3748;border-radius:14px;touch-action:none;display:flex;align-items:center;justify-content:center;color:#64748b;user-select:none;font-size:18px">
+          ↕
+        </div>
+      </div>
+      <div class="grid" style="margin-top:10px">
+        <button onclick="click_('left')">Left Click</button>
+        <button onclick="click_('left',true)">Double Click</button>
+        <button onclick="click_('right')">Right Click</button>
+      </div>
+    </div>
+
+    <!-- Virtual Keyboard -->
+    <div class="card">
+      <h2>⌨️ Virtual Keyboard Remote</h2>
+      <input id="typed" placeholder="Type text to send to PC…">
+      <div class="row">
+        <button onclick="typeText(false)">⌨ Type Text</button>
+        <button class="acc" onclick="typeText(true)">Type + Enter</button>
+      </div>
+      <div class="grid" style="margin-top:10px">
+        <button onclick="key('enter')">Enter</button>
+        <button onclick="key('backspace')">⌫ Backspace</button>
+        <button onclick="key('esc')">Esc</button>
+        <button onclick="key('tab')">Tab</button>
+        <button onclick="key('space')">Space</button>
+        <button onclick="key('delete')">Delete</button>
+        <button onclick="key('left')">← Left</button>
+        <button onclick="key('up')">↑ Up</button>
+        <button onclick="key('down')">↓ Down</button>
+        <button onclick="key('right')" style="grid-column:2">→ Right</button>
+        <button onclick="key('alt+tab')">Alt+Tab</button>
+        <button onclick="key('win+d')">Desktop</button>
+        <button onclick="key('alt+f4')">Alt+F4</button>
+        <button onclick="key('ctrl+c')">Copy</button>
+        <button onclick="key('ctrl+v')">Paste</button>
+        <button onclick="key('ctrl+z')">Undo</button>
+        <button onclick="key('f11')">Fullscreen</button>
+        <button onclick="key('f5')">Refresh</button>
+        <button onclick="key('ctrl+shift+esc')">Task Mgr</button>
+      </div>
+    </div>
+
+    <!-- Sliders & Media -->
+    <div class="card">
+      <h2>🎚️ Master Hardware &amp; Media Sliders</h2>
+      <div class="grid" style="margin-bottom:12px">
+        <button onclick="media('prev')">⏮ Prev</button>
+        <button onclick="media('play_pause')">⏯ Play/Pause</button>
+        <button onclick="media('next')">⏭ Next</button>
+        <button onclick="media('vol_down',3)">🔉 Volume −</button>
+        <button onclick="media('mute')">🔇 Mute</button>
+        <button onclick="media('vol_up',3)">🔊 Volume +</button>
+      </div>
+      <div style="margin-top:12px">
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--mut);margin-bottom:6px">
+          <span>🔊 Master Volume</span><span id="volVal">50%</span>
+        </div>
+        <input id="vol" type="range" min="0" max="100" onchange="setVol(this.value);$('volVal').textContent=this.value+'%'">
+      </div>
+      <div style="margin-top:12px">
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--mut);margin-bottom:6px">
+          <span>🔆 Monitor Brightness</span><span id="briVal">100%</span>
+        </div>
+        <input id="bri" type="range" min="0" max="100" onchange="setBri(this.value);$('briVal').textContent=this.value+'%'">
+      </div>
+    </div>
+
+    <!-- Power Management -->
+    <div class="card">
+      <h2>⏻ Power &amp; Sleep Controls</h2>
+      <div class="grid">
+        <button class="red" onclick="pw('shutdown','Shut down')">⏻ Shut Down</button>
+        <button class="red" onclick="pw('restart','Restart')">🔄 Restart</button>
+        <button class="red" onclick="pw('logoff','Sign out')">🚪 Sign Out</button>
+        <button onclick="pw('lock')">🔒 Lock Screen</button>
+        <button onclick="pw('sleep','Sleep')">🌙 Sleep</button>
+        <button onclick="pw('hibernate','Hibernate')">❄️ Hibernate</button>
+        <button class="acc" onclick="pw('cancel')" style="grid-column:span 3">✋ Abort Pending Shutdown</button>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <input id="mins" type="number" value="30" min="1" placeholder="Minutes">
+        <button onclick="timer('shutdown')">Shutdown in…</button>
+        <button onclick="timer('restart')">Restart in…</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. FILES TAB -->
+  <div id="tab-files" class="tab-content" style="display:none">
+    <div class="card">
+      <h2>
+        <span>📁 Multi-Drive File Explorer</span>
+        <button onclick="files(cur)" style="padding:4px 8px;font-size:11px">🔄 Refresh</button>
+      </h2>
+      <div id="drives" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px"></div>
+      <div id="fpath" style="font-size:12px;font-family:monospace;background:#0d101a;padding:8px 10px;border-radius:8px;border:1px solid var(--card-border);margin-bottom:8px;word-break:break-all"></div>
+      <div id="files" style="max-height:360px;overflow-y:auto"></div>
+      <div class="row" style="margin-top:10px">
+        <input type="file" id="upf" multiple style="background:#0d101a">
+        <button class="acc" onclick="upload()" style="flex:0 0 130px">⬆ Upload to PC</button>
+      </div>
+    </div>
+
+    <!-- Clipboard Sync -->
+    <div class="card">
+      <h2>📋 Bi-Directional Clipboard Sync</h2>
+      <textarea id="clip" rows="3" placeholder="Clipboard content…"></textarea>
+      <div class="row">
+        <button onclick="clipGet()">⬇ Pull from PC</button>
+        <button class="acc" onclick="clipSet()">⬆ Push to PC</button>
+        <button onclick="clipCopy()">📋 Copy on Phone</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6. TERMINAL TAB -->
+  <div id="tab-terminal" class="tab-content" style="display:none">
+    <div class="card">
+      <h2>
+        <span>💻 Remote Terminal Console</span>
+        <span id="adminB" class="badge badge-green">ADMIN SHELL</span>
+      </h2>
+      <div id="termOff" style="display:none;color:var(--amber);font-size:13px;padding:8px 0">
+        Terminal is disabled in configuration.
+      </div>
+      <div id="termLocked" style="display:none;background:#0d101a;padding:14px;border-radius:12px;border:1px solid var(--card-border)">
+        <div style="font-size:13px;color:var(--mut);margin-bottom:8px">🔐 Re-enter your password to unlock the terminal console (10 min session)</div>
+        <input id="tpw" type="password" placeholder="Password (mexxz@2007)" style="margin-bottom:8px">
+        <button class="acc" onclick="termUnlock()" style="width:100%">🔓 Unlock Console</button>
+      </div>
+      <div id="termOn" style="display:none">
+        <pre id="tout" style="white-space:pre-wrap;word-break:break-all;font-size:12px;font-family:'JetBrains Mono',Consolas,monospace;background:#080a10;border:1px solid var(--card-border);border-radius:12px;padding:12px;height:260px;overflow:auto;margin:0 0 8px;color:#cbd5e1"></pre>
+        <div id="tcwd" style="font-size:11px;font-family:monospace;color:var(--mut);margin-bottom:6px;word-break:break-all"></div>
+        <div class="row">
+          <select id="tshell" style="flex:0 0 130px"></select>
+          <input id="tcmd" placeholder="Enter shell command…" autocapitalize="off" autocorrect="off" spellcheck="false" style="flex:3">
+          <button class="acc" onclick="termRun()" style="flex:0 0 80px">▶ Run</button>
+          <button onclick="termLock()" style="flex:0 0 80px">🔒 Lock</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Active Processes -->
+    <div class="card">
+      <h2>
+        <span>⚙️ Active System Processes</span>
+        <button onclick="procs()" style="padding:4px 8px;font-size:11px">🔄 Refresh</button>
+      </h2>
+      <div id="procs" style="max-height:260px;overflow-y:auto"></div>
+    </div>
+  </div>
 </div>
-</div>
-<div id="fleetAddBox" style="display:none;background:#12141a;padding:10px;border-radius:10px;margin-bottom:10px;border:1px solid #2a2f3b">
-<input id="fAddName" placeholder="PC Name (e.g. Office PC)" style="margin-bottom:6px">
-<input id="fAddUrl" placeholder="URL (e.g. http://192.168.1.50:8765 or Tailscale IP)" style="margin-bottom:6px">
-<div class="row"><button class="acc" onclick="addFleetNode()">Save PC</button><button onclick="$('fleetAddBox').style.display='none'">Cancel</button></div>
-</div>
-<input id="fleetSearch" placeholder="🔍 Search fleet (up to 100+ PCs)…" oninput="filterFleet()" style="padding:7px 10px;font-size:12px;margin-bottom:8px">
-<div id="fleetList" style="display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto"></div>
-<div class="row" style="margin-top:8px">
-<button onclick="autoAddDiscovered()" style="font-size:12px">⚡ Auto-Add Discovered</button>
-<button class="red" onclick="broadcastFleet('lock')" style="font-size:12px">🔒 Lock All PCs</button>
-</div>
-</div>
 
-<div class="card" id="devCard">
-<div style="display:flex;justify-content:space-between;align-items:center">
-<h2>📡 Other Devices</h2>
-<button onclick="discover()" style="padding:4px 10px;font-size:12px">🔍 Scan Network</button></div>
-<div id="devList" class="stat" style="flex-direction:column;gap:6px;margin-top:6px">Scanning local network…</div>
-</div>
+<div id="toast"></div>
 
-<div class="card"><h2>Status</h2>
-<div class="stat"><span>CPU</span><span id="cpuT"></span></div><div class="bar"><i id="cpu"></i></div>
-<div class="stat"><span>RAM</span><span id="ramT"></span></div><div class="bar"><i id="ram"></i></div>
-<div class="stat"><span>Disk</span><span id="diskT"></span></div><div class="bar"><i id="disk"></i></div>
-<div class="stat"><span id="osT"></span><span id="batT"></span></div></div>
-
-<div class="card"><h2>Power</h2><div class="grid">
-<button class="red" onclick="pw('shutdown','Shut down')">⏻ Shutdown</button>
-<button class="red" onclick="pw('restart','Restart')">🔄 Restart</button>
-<button class="red" onclick="pw('logoff','Sign out')">🚪 Sign out</button>
-<button onclick="pw('lock')">🔒 Lock</button>
-<button onclick="pw('sleep','Sleep')">🌙 Sleep</button>
-<button onclick="pw('hibernate','Hibernate')">❄️ Hibernate</button>
-<button class="acc" onclick="pw('cancel')" style="grid-column:span 3">✋ Cancel pending shutdown</button></div>
-<div class="row"><input id="mins" type="number" value="30" min="1" placeholder="minutes">
-<button onclick="timer('shutdown')">Shutdown in…</button><button onclick="timer('restart')">Restart in…</button></div></div>
-
-<div class="card"><h2>Media &amp; Volume</h2><div class="grid">
-<button onclick="media('prev')">⏮</button><button onclick="media('play_pause')">⏯</button><button onclick="media('next')">⏭</button>
-<button onclick="media('vol_down',3)">🔉 −</button><button onclick="media('mute')">🔇</button><button onclick="media('vol_up',3)">🔊 +</button></div>
-<div class="stat" style="margin-top:10px"><span>🔊 Volume</span></div><input id="vol" type="range" min="0" max="100" onchange="setVol(this.value)" style="padding:6px 0">
-<div class="stat"><span>🔆 Brightness</span></div><input id="bri" type="range" min="0" max="100" onchange="setBri(this.value)" style="padding:6px 0"></div>
-
-<div class="card"><h2>Screen</h2>
-<div class="row">
-<button id="liveB" class="acc" onclick="toggleScreenStream()">▶ Live Screen</button>
-<button onclick="shot()">📸 Snapshot</button>
-</div>
-<div class="row"><button id="tapB" onclick="toggleTap()">🎯 Tap-to-click: off</button></div>
-<img id="shot" style="display:none;cursor:crosshair"></div>
-
-<div class="card"><h2>Clipboard</h2>
-<textarea id="clip" rows="3" placeholder="Clipboard text" style="width:100%;border-radius:10px;border:1px solid #2a2f3b;background:#12141a;color:var(--fg);padding:10px;font:inherit"></textarea>
-<div class="row"><button onclick="clipGet()">⬇ Get from PC</button><button onclick="clipSet()">⬆ Send to PC</button></div>
-<div class="row"><button onclick="clipCopy()">📋 Copy on this phone</button></div></div>
-
-<div class="card"><h2>Sound &amp; Camera</h2>
-<div class="row"><button onclick="sound('beep')">🔔 Beep</button><button onclick="sound('alarm')">🚨 Find my PC</button></div>
-<input id="say" placeholder="Make the PC speak…" style="margin-top:8px"><div class="row"><button onclick="speak()">🗣 Speak</button></div>
-<div class="row">
-<button id="camB" class="acc" onclick="toggleCamStream()">📹 Live Camera Feed</button>
-<button onclick="camShot()">📷 Snapshot</button>
-</div>
-<img id="camimg" style="display:none" onerror="toast('⚠ Webcam unavailable')"></div>
-
-<div class="card"><h2>Quick commands</h2><div class="grid" id="cmds"></div>
-<pre id="cmdout" style="white-space:pre-wrap;font-size:12px;color:var(--mut);max-height:160px;overflow:auto;margin:8px 0 0"></pre></div>
-
-<div class="card"><h2>Terminal <span id="adminB" style="font-size:11px;padding:2px 8px;border-radius:8px;background:#262b36;margin-left:6px"></span></h2>
-<div id="termOff" class="stat" style="display:none">Disabled. On the PC, set "terminal_enabled": true in config.json and restart.</div>
-<div id="termLocked" style="display:none"><input id="tpw" type="password" placeholder="Enter password again to unlock (10 min)">
-<div class="row"><button class="acc" onclick="termUnlock()">🔓 Unlock terminal</button></div></div>
-<div id="termOn" style="display:none">
-<pre id="tout" style="white-space:pre-wrap;word-break:break-all;font-size:12px;background:#0b0c10;border-radius:10px;padding:10px;height:220px;overflow:auto;margin:0 0 8px;color:#cfd6e6"></pre>
-<div class="stat" id="tcwd" style="margin-bottom:6px;word-break:break-all"></div>
-<div class="row"><select id="tshell" style="flex:0 0 120px;border-radius:10px;border:0;background:#262b36;color:var(--fg);padding:11px 8px"></select>
-<input id="tcmd" placeholder="command" autocapitalize="off" autocorrect="off" spellcheck="false" style="flex:3"></div>
-<div class="row"><button class="acc" onclick="termRun()">▶ Run</button><button onclick="termLock()">🔒 Lock</button></div></div></div>
-
-<div class="card"><h2>Alerts &amp; startup</h2><div id="alerts" class="stat" style="flex-direction:column;gap:4px;margin-bottom:8px">No alerts yet</div>
-<div class="row"><button id="autoB" onclick="autoTog()">🚀 Start with PC</button></div>
-<div class="row"><button onclick="askNotif()">🔔 Enable browser notifications</button></div>
-<div class="stat" style="margin-top:8px">Alerts when this page is closed: set "ntfy_topic" in config.json and install the free ntfy app.</div></div>
-
-<div class="card"><h2>Touchpad</h2>
-<div style="display:flex;gap:8px"><div id="pad" style="flex:1;height:200px;background:#12141a;border:1px dashed #333a4a;border-radius:12px;touch-action:none;display:flex;align-items:center;justify-content:center;color:#555d70;user-select:none">drag to move · tap to click</div>
-<div id="scroll" style="width:46px;height:200px;background:#12141a;border:1px dashed #333a4a;border-radius:12px;touch-action:none;display:flex;align-items:center;justify-content:center;color:#555d70;user-select:none">↕</div></div>
-<div class="grid" style="margin-top:8px"><button onclick="click_('left')">Left</button><button onclick="click_('left',true)">Double</button><button onclick="click_('right')">Right</button></div></div>
-
-<div class="card"><h2>Keyboard</h2>
-<input id="typed" placeholder="Type text to send to PC"><div class="row"><button onclick="typeText(false)">⌨ Type</button><button onclick="typeText(true)">Type + Enter</button></div>
-<div class="grid" style="margin-top:8px">
-<button onclick="key('enter')">Enter</button><button onclick="key('backspace')">⌫</button><button onclick="key('esc')">Esc</button>
-<button onclick="key('tab')">Tab</button><button onclick="key('space')">Space</button><button onclick="key('delete')">Del</button>
-<button onclick="key('left')">←</button><button onclick="key('up')">↑</button><button onclick="key('down')">↓</button>
-<button onclick="key('right')" style="grid-column:2">→</button>
-<button onclick="key('alt+tab')">Alt+Tab</button><button onclick="key('win+d')">Desktop</button><button onclick="key('alt+f4')">Alt+F4</button>
-<button onclick="key('ctrl+c')">Copy</button><button onclick="key('ctrl+v')">Paste</button><button onclick="key('ctrl+z')">Undo</button>
-<button onclick="key('f11')">Fullscreen</button><button onclick="key('f5')">Refresh</button><button onclick="key('ctrl+shift+esc')">Task Mgr</button></div></div>
-
-<div class="card"><h2>Files &amp; Drives</h2>
-<div id="drives" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px"></div>
-<div id="fpath" class="stat" style="word-break:break-all;margin-bottom:6px"></div>
-<div id="files"></div>
-<div class="row"><input type="file" id="upf" multiple><button onclick="upload()">⬆ Upload here</button></div></div>
-
-<div class="card"><h2>Open</h2>
-<input id="url" placeholder="Website (e.g. youtube.com)"><div class="row"><button onclick="openUrl()">🌐 Open on PC</button></div>
-<div class="grid" id="apps" style="margin-top:10px"></div></div>
-
-<div class="card"><h2>Message on PC screen</h2>
-<input id="msg" placeholder="Type message"><div class="row"><button onclick="sendMsg()">💬 Show message</button></div></div>
-
-<div class="card"><h2>Top processes (RAM)</h2><div id="procs"></div>
-<div class="row"><button onclick="procs()">Refresh</button></div></div>
-
-<div class="row"><button onclick="logout()">Log out</button></div>
-</div><div id="toast"></div>
 <script>
 const $=id=>document.getElementById(id);
-function toast(t){const e=$('toast');e.textContent=t;e.style.display='block';clearTimeout(e._t);e._t=setTimeout(()=>e.style.display='none',2500)}
+function toast(t){const e=$('toast');e.textContent=t;e.style.display='block';clearTimeout(e._t);e._t=setTimeout(()=>e.style.display='none',2600)}
+
+function showTab(id, btn){
+  document.querySelectorAll('.tab-content').forEach(el=>el.style.display='none');
+  document.querySelectorAll('.nav-tab').forEach(el=>el.classList.remove('active'));
+  const target=$('tab-'+id);
+  if(target) target.style.display='block';
+  if(btn) btn.classList.add('active');
+}
+
 async function api(path,body){
   const r=await fetch('/api/'+path,{method:body===undefined?'GET':'POST',headers:{'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});
   if(r.status===401){show(false);throw 0}
   const ct=r.headers.get('content-type')||'';
   const d=ct.includes('json')?await r.json():r;
   if(d.error)toast('⚠ '+d.error);else if(d.msg)toast('✓ '+d.msg);return d}
+
 function show(ok){$('login').style.display=ok?'none':'block';$('main').style.display=ok?'block':'none';if(ok){init()}}
 async function login(){const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:$('pw').value})});
   if(r.ok){$('pw').value='';show(true)}else toast((await r.json()).error)}
@@ -1468,7 +1964,7 @@ async function logout(){await api('logout',{});show(false)}
 function pw(a,label){if(label&&!confirm(label+' the PC?'))return;api('power/'+a,{delay:5})}
 function timer(a){api('timer',{action:a,minutes:+$('mins').value})}
 function media(k,t){api('media/'+k,{times:t||1})}
-function openUrl(){api('open_url',{url:$('url').value});toast('Opening…')}
+function openUrl(){api('open_url',{url:$('url').value});toast('Opening link…')}
 function sendMsg(){api('message',{text:$('msg').value});$('msg').value=''}
 
 /* screen streaming & snapshots */
@@ -1476,15 +1972,18 @@ let screenStreaming=false;
 function toggleScreenStream(){
   screenStreaming=!screenStreaming;
   const i=$('shot');
+  const badge=$('screenStatusBadge');
   if(screenStreaming){
     i.style.display='block';
     i.src='/api/stream/screen?t='+Date.now();
-    $('liveB').textContent='⏹ Stop Live';
+    $('liveB').textContent='⏹ Stop Stream';
     $('liveB').classList.remove('acc');$('liveB').classList.add('red');
+    if(badge) badge.style.display='inline-block';
   }else{
     i.src='';i.style.display='none';
-    $('liveB').textContent='▶ Live Screen';
+    $('liveB').textContent='▶ Start Live Stream';
     $('liveB').classList.remove('red');$('liveB').classList.add('acc');
+    if(badge) badge.style.display='none';
   }
 }
 function shot(){
@@ -1497,15 +1996,18 @@ let camStreaming=false;
 function toggleCamStream(){
   camStreaming=!camStreaming;
   const i=$('camimg');
+  const badge=$('camStatusBadge');
   if(camStreaming){
     i.style.display='block';
     i.src='/api/stream/webcam?t='+Date.now();
     $('camB').textContent='⏹ Stop Camera';
     $('camB').classList.remove('acc');$('camB').classList.add('red');
+    if(badge) badge.style.display='inline-block';
   }else{
     i.src='';i.style.display='none';
-    $('camB').textContent='📹 Live Camera Feed';
+    $('camB').textContent='📹 Start Live Camera';
     $('camB').classList.remove('red');$('camB').classList.add('acc');
+    if(badge) badge.style.display='none';
   }
 }
 function camShot(){
@@ -1515,14 +2017,14 @@ function camShot(){
 
 async function stats(){try{const s=await api('stats');$('host').textContent=s.host;
   for(const k of['cpu','ram','disk']){$(k).style.width=s[k]+'%';$(k+'T').textContent=s[k]+'%'}
-  $('osT').textContent=s.os+' · up '+Math.floor(s.uptime_min/60)+'h '+s.uptime_min%60+'m';
+  $('osT').textContent=s.os+' · Uptime: '+Math.floor(s.uptime_min/60)+'h '+s.uptime_min%60+'m';
   $('batT').textContent=s.battery?('🔋 '+s.battery.percent+'%'+(s.battery.plugged?' ⚡':'')):''}catch(e){}}
 async function procs(){const p=await api('processes');$('procs').innerHTML=p.map(x=>
-  `<div class="proc"><span>${x.name} <small style="color:#8b91a1">#${x.pid} · ${x.mem}%</small></span><span><button onclick="watch('${x.name.replace(/'/g,'')}')">🔔</button> <button class="red" onclick="kill(${x.pid},'${x.name.replace(/'/g,'')}')">End</button></span></div>`).join('')}
+  `<div class="proc"><span><b>${x.name}</b> <small style="color:var(--mut)">#${x.pid} · RAM ${x.mem}%</small></span><span><button onclick="watch('${x.name.replace(/'/g,'')}')">🔔 Watch</button> <button class="red" onclick="kill(${x.pid},'${x.name.replace(/'/g,'')}')">End</button></span></div>`).join('')}
 function watch(n){api('watch',{name:n})}
-function kill(pid,n){if(confirm('End '+n+'?'))api('kill',{pid}).then(procs)}
+function kill(pid,n){if(confirm('Terminate '+n+'?'))api('kill',{pid}).then(procs)}
 
-/* mouse / keyboard */
+/* mouse & keyboard */
 function click_(b,d){api('mouse/click',{button:b,double:!!d})}
 function key(k){api('keyboard/key',{key:k})}
 function typeText(e){const t=$('typed').value;if(!t&&!e)return;api('keyboard/type',{text:t,enter:e});$('typed').value=''}
@@ -1543,10 +2045,10 @@ async function loadDrives(){
     const d=await api('drives');
     if(d.drives&&d.drives.length){
       $('drives').innerHTML=d.drives.map(x=>`
-        <button style="flex:initial;padding:6px 10px;font-size:12px;background:#262b36" onclick="files('${x.mount.replace(/\\/g,'\\\\')}')">
-          💾 ${x.mount}${x.free_gb!=null?` <small style="color:var(--mut)">(${x.free_gb}GB)</small>`:''}
+        <button style="flex:initial;padding:6px 12px;font-size:12px" onclick="files('${x.mount.replace(/\\/g,'\\\\')}')">
+          💾 <b>${x.mount}</b>${x.free_gb!=null?` <small style="color:var(--mut)">(${x.free_gb} GB)</small>`:''}
         </button>
-      `).join('')+`<button style="flex:initial;padding:6px 10px;font-size:12px;background:#262b36" onclick="files('')">🏠 Home</button>`;
+      `).join('')+`<button style="flex:initial;padding:6px 12px;font-size:12px" onclick="files('')">🏠 Home</button>`;
     }
   }catch(e){}
 }
@@ -1557,7 +2059,7 @@ async function files(p){const d=await api('files'+(p?'?path='+encodeURIComponent
     const s=document.createElement('span');s.textContent=(f.dir?'📁 ':'📄 ')+f.name+(f.dir?'':'  · '+fmt(f.size));s.style.cursor='pointer';s.style.wordBreak='break-all';
     s.onclick=()=>f.dir?files(full):0;r.appendChild(s);
     if(!f.dir){const b=document.createElement('button');b.textContent='⬇';b.onclick=()=>location.href='/api/files/download?path='+encodeURIComponent(full);
-      const o=document.createElement('button');o.textContent='▶';o.onclick=()=>api('files/open',{path:full});const w=document.createElement('span');w.append(o,' ',b);r.appendChild(w)}
+      const o=document.createElement('button');o.textContent='▶ Open';o.onclick=()=>api('files/open',{path:full});const w=document.createElement('span');w.append(o,' ',b);r.appendChild(w)}
     $('files').appendChild(r)})}
 async function upload(){const fs=$('upf').files;if(!fs.length)return;const fd=new FormData();fd.append('path',cur);for(const f of fs)fd.append('files',f);
   const r=await fetch('/api/files/upload',{method:'POST',body:fd});const d=await r.json();toast(d.error?'⚠ '+d.error:'✓ '+d.msg);$('upf').value='';files(cur)}
@@ -1565,31 +2067,33 @@ async function upload(){const fs=$('upf').files;if(!fs.length)return;const fd=ne
 /* fleet management */
 let fleetData=[];
 async function fleetRefresh(){
-  $('fleetList').innerHTML='<span style="color:var(--mut);font-size:12px">Checking fleet status…</span>';
+  $('fleetList').innerHTML='<span style="color:var(--mut);font-size:12px">Checking fleet node statuses…</span>';
   try{
     const d=await api('fleet');
     fleetData=d.fleet||[];
-    $('fleetCount').textContent=fleetData.length+' PC'+(fleetData.length===1?'':'s');
+    const count=fleetData.length+' Node'+(fleetData.length===1?'':'s');
+    $('fleetCount').textContent=count;
+    if($('tabFleetCount')) $('tabFleetCount').textContent=fleetData.length;
     filterFleet();
   }catch(e){
-    $('fleetList').innerHTML='<span style="color:var(--mut);font-size:12px">Error loading fleet.</span>';
+    $('fleetList').innerHTML='<span style="color:var(--mut);font-size:12px">Error loading fleet nodes.</span>';
   }
 }
 function filterFleet(){
   const q=$('fleetSearch').value.toLowerCase().trim();
   const filtered=fleetData.filter(x=>(x.name||'').toLowerCase().includes(q)||(x.url||'').toLowerCase().includes(q));
   if(!filtered.length){
-    $('fleetList').innerHTML='<span style="color:var(--mut);font-size:12px">No matching PCs found.</span>';
+    $('fleetList').innerHTML='<span style="color:var(--mut);font-size:12px;padding:8px 0">No matching nodes registered in fleet.</span>';
     return;
   }
   $('fleetList').innerHTML=filtered.map(x=>{
     const isLocal=x.local;
-    const badge=x.online?'<span style="color:var(--grn);font-size:11px">● ONLINE</span>':'<span style="color:var(--red);font-size:11px">○ OFFLINE</span>';
-    const stats=x.online&&x.cpu!=null?`<small style="color:var(--mut)"> · CPU ${x.cpu}% · RAM ${x.ram}%</small>`:'';
-    const btn=isLocal?'<span style="font-size:11px;color:var(--grn);padding:4px 8px;border-radius:6px;background:#182b22">ACTIVE PC</span>':
-      `<span><button class="acc" style="padding:4px 8px;font-size:11px" onclick="window.open('${x.url}','_blank')">🎮 Control</button> <button class="red" style="padding:4px 8px;font-size:11px" onclick="removeFleetNode('${x.id}')">✕</button></span>`;
-    return `<div class="proc" style="padding:8px;background:#15181f;border-radius:8px;border:1px solid #232732;margin-bottom:4px">
-      <div><b>${x.name}</b> ${badge}${stats}<br><small style="color:var(--mut)">${x.url}</small></div>
+    const badge=x.online?'<span class="badge badge-green">ONLINE</span>':'<span class="badge badge-red">OFFLINE</span>';
+    const stats=x.online&&x.cpu!=null?`<span style="color:var(--mut);font-size:11px"> · CPU ${x.cpu}% · RAM ${x.ram}%</span>`:'';
+    const btn=isLocal?'<span class="badge badge-green">PRIMARY HOST</span>':
+      `<span><button class="acc" style="padding:4px 10px;font-size:11px" onclick="window.open('${x.url}','_blank')">🎮 Control</button> <button class="red" style="padding:4px 8px;font-size:11px" onclick="removeFleetNode('${x.id}')">✕</button></span>`;
+    return `<div class="proc" style="padding:10px">
+      <div><b>${x.name}</b> ${badge} ${stats}<br><small style="color:var(--mut)">${x.url}</small></div>
       ${btn}
     </div>`;
   }).join('');
@@ -1605,7 +2109,7 @@ async function addFleetNode(){
   }
 }
 async function removeFleetNode(id){
-  if(!confirm('Remove PC from fleet?'))return;
+  if(!confirm('Remove PC from fleet registry?'))return;
   await api('fleet/remove',{id});
   fleetRefresh();
 }
@@ -1621,18 +2125,18 @@ async function autoAddDiscovered(){
   fleetRefresh();
 }
 async function broadcastFleet(act){
-  if(!confirm('Are you sure you want to broadcast "'+act+'" to ALL fleet PCs?'))return;
+  if(!confirm('Broadcast "'+act+'" to ALL fleet PCs?'))return;
   const r=await api('fleet/broadcast',{action:act});
   if(r.msg)toast(r.msg);
 }
 
 /* device discovery */
 async function discover(){
-  $('devList').innerHTML='<span style="color:var(--mut)">Scanning network for devices…</span>';
+  $('devList').innerHTML='<span style="color:var(--mut)">Scanning subnet for RemotePC nodes…</span>';
   try{
     const d=await api('discover');
     if(!d.devices||!d.devices.length){
-      $('devList').innerHTML='<span style="color:var(--mut)">No other Remote PC devices found ('+d.my_ip+' is this PC).</span>';
+      $('devList').innerHTML='<span style="color:var(--mut)">No other RemotePC nodes found on '+d.my_ip+' subnet.</span>';
       return;
     }
     $('devList').innerHTML=d.devices.map(dev=>`
@@ -1644,32 +2148,32 @@ async function discover(){
   }
 }
 
-/* extras */
+/* hardware & extras */
 function setVol(v){api('volume',{level:+v})}
 function setBri(v){api('brightness',{level:+v})}
 let tapOn=false;
-function toggleTap(){tapOn=!tapOn;$('tapB').textContent='🎯 Tap-to-click: '+(tapOn?'ON':'off')}
+function toggleTap(){tapOn=!tapOn;$('tapB').textContent='🎯 Tap-to-Click: '+(tapOn?'ON':'OFF');$('tapB').classList.toggle('acc',tapOn)}
 $('shot').addEventListener('click',e=>{if(!tapOn)return;const r=e.target.getBoundingClientRect();
   api('mouse/click_at',{x:(e.clientX-r.left)/r.width,y:(e.clientY-r.top)/r.height});if(!screenStreaming)setTimeout(shot,700)});
 async function clipGet(){const d=await api('clipboard');if(!d.error)$('clip').value=d.text}
 function clipSet(){api('clipboard',{text:$('clip').value})}
-function clipCopy(){const c=$('clip');c.select();try{navigator.clipboard?navigator.clipboard.writeText(c.value):document.execCommand('copy');toast('✓ Copied on phone')}catch(e){document.execCommand('copy')}}
+function clipCopy(){const c=$('clip');c.select();try{navigator.clipboard?navigator.clipboard.writeText(c.value):document.execCommand('copy');toast('✓ Copied to clipboard')}catch(e){document.execCommand('copy')}}
 function sound(k){api('sound',{kind:k})}
 function speak(){api('speak',{text:$('say').value})}
-async function autoGet(){const d=await api('autostart');$('autoB').textContent='🚀 Start with PC: '+(d.enabled?'ON':'off')}
-async function autoTog(){await api('autostart',{enabled:$('autoB').textContent.endsWith('off')});autoGet()}
+async function autoGet(){const d=await api('autostart');$('autoB').textContent='🚀 Start with PC: '+(d.enabled?'ON':'OFF')}
+async function autoTog(){await api('autostart',{enabled:$('autoB').textContent.endsWith('OFF')});autoGet()}
 async function cmds(){const c=await api('commands');$('cmds').innerHTML='';c.forEach(n=>{const b=document.createElement('button');b.textContent=n;
   b.onclick=()=>runCmd(n);$('cmds').appendChild(b)})}
 async function runCmd(n){if(!confirm('Run "'+n+'" on the PC?'))return;$('cmdout').textContent='Running…';const d=await api('command',{name:n});$('cmdout').textContent=d.output||d.error||''}
-function askNotif(){if(window.isSecureContext&&window.Notification)Notification.requestPermission();else toast('Needs HTTPS - use the ntfy app instead')}
+function askNotif(){if(window.isSecureContext&&window.Notification)Notification.requestPermission();else toast('Notifications require HTTPS or ntfy app')}
 let lastAlert=null;
 async function pollAlerts(){try{const d=await api('alerts?since='+(lastAlert===null?999999999:lastAlert));
   if(lastAlert!==null)d.alerts.forEach(a=>{toast('🔔 '+a.text);if(navigator.vibrate)navigator.vibrate(200);
     if(window.isSecureContext&&window.Notification&&Notification.permission==='granted')new Notification('Remote PC',{body:a.text})});
-  lastAlert=d.last;if(d.recent.length)$('alerts').innerHTML=d.recent.map(a=>'<span>'+a.time+' · '+a.text.replace(/</g,'&lt;')+'</span>').join('')}catch(e){}}
+  lastAlert=d.last;}catch(e){}}
 
 /* terminal */
-function termView(s){$('adminB').textContent=s.admin?'🛡 ADMIN':'user (not admin)';$('adminB').style.color=s.admin?'#3ddc97':'#8b91a1';
+function termView(s){$('adminB').textContent=s.admin?'🛡 ADMIN CONSOLE':'USER CONSOLE';$('adminB').className=s.admin?'badge badge-green':'badge';
   $('termOff').style.display=s.enabled?'none':'block';
   $('termLocked').style.display=s.enabled&&!s.unlocked?'block':'none';
   $('termOn').style.display=s.enabled&&s.unlocked?'block':'none';
@@ -1689,9 +2193,9 @@ $('tcmd').addEventListener('keydown',e=>{if(e.key==='Enter')termRun()});
 $('tpw').addEventListener('keydown',e=>{if(e.key==='Enter')termUnlock()});
 
 let extrasOn=false;
-async function initExtras(){autoGet();cmds();termStatus();
-  try{const v=await api('volume');if(v.level!=null)$('vol').value=v.level}catch(e){}
-  try{const b=await api('brightness');if(b.level!=null)$('bri').value=b.level}catch(e){}
+async function initExtras(){cmds();termStatus();
+  try{const v=await api('volume');if(v.level!=null){$('vol').value=v.level;$('volVal').textContent=v.level+'%'}}catch(e){}
+  try{const b=await api('brightness');if(b.level!=null){$('bri').value=b.level;$('briVal').textContent=b.level+'%'}}catch(e){}
   if(!extrasOn){extrasOn=true;pollAlerts();setInterval(()=>{if($('main').style.display!=='none')pollAlerts()},5000)}
   if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{})}
 let started=false;

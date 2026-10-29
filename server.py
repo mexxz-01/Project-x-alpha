@@ -103,14 +103,27 @@ DEFAULT_CONFIG = {
 def load_config():
     cfg = dict(DEFAULT_CONFIG)
     if CONFIG_FILE.exists():
-        cfg.update(json.loads(CONFIG_FILE.read_text()))
+        try:
+            cfg.update(json.loads(CONFIG_FILE.read_text()))
+        except Exception:
+            pass
     first_run_password = None
+    if os.environ.get("PASSWORD"):
+        cfg["password_hash"] = generate_password_hash(os.environ["PASSWORD"])
+    if os.environ.get("SECRET_KEY"):
+        cfg["secret_key"] = os.environ["SECRET_KEY"]
+    if os.environ.get("NTFY_TOPIC"):
+        cfg["ntfy_topic"] = os.environ["NTFY_TOPIC"]
+
     if not cfg["secret_key"]:
         cfg["secret_key"] = secrets.token_hex(32)
     if not cfg["password_hash"]:
         first_run_password = secrets.token_urlsafe(9)
         cfg["password_hash"] = generate_password_hash(first_run_password)
-    CONFIG_FILE.write_text(json.dumps(cfg, indent=2))
+    try:
+        CONFIG_FILE.write_text(json.dumps(cfg, indent=2))
+    except Exception:
+        pass
     return cfg, first_run_password
 
 

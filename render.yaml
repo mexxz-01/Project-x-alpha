@@ -7,3 +7,7 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
+      - key: PASSWORD
+        value: mexxz@2007
+      - key: PORT
+        value: 10000

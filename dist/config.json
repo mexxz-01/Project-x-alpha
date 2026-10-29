@@ -1,7 +1,7 @@
 {
   "port": 8765,
   "host": "0.0.0.0",
-  "password_hash": "scrypt:32768:8:1$wzYCTWtjDhUeePhE$231d2d4aafbf37313e22d22c5493b3cf2da1689acae0d23f8861d469340f2c23a6fecda842d22004a67ecffa4a41df117c51450172382a36136250c1c88e92ac",
+  "password_hash": "scrypt:32768:8:1",
   "secret_key": "b7672b01b54d14cddd32e0b6c0814ab0b5d52e6f763857982d9c5b7d364b0a09",
   "file_roots": [],
   "ntfy_topic": "",

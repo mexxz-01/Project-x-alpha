@@ -1,7 +1,7 @@
 {
   "port": 8765,
   "host": "0.0.0.0",
-  "password_hash": "scrypt:32768:8:1$SIj13kDWHjlLDgSe$db61d6cbd364a24ef56d85763cdf7803c00a5b9f6e55caa9d8a20cbd5f210a944ef95a98161a42be94339684bacfe6c021145b43688841c2b2f6176c49a2397b",
+  "password_hash": "scrypt:32768:8:1$YEUInWwNr3gIINYC$f8cd567c2b4d283c8fac654b3492e2aff02c5af6ea6aecf0781573737ecd295af4e1a6f9b0eae0ee61faacc0e2b88845764d0b4ecb17075ff448a1b9f62920cd",
   "secret_key": "1ad46f899614dd58a8f94dc239cebe791b895d7134ddfbcc29e7c5e58eec1dfd",
   "file_roots": [],
   "ntfy_topic": "",

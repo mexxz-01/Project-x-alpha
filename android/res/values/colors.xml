@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg_dark">#0b0f17</color>
+    <color name="card_bg">#131b2e</color>
+    <color name="accent_blue">#3b82f6</color>
+    <color name="accent_blue_hover">#2563eb</color>
+    <color name="text_white">#f8fafc</color>
+    <color name="text_muted">#94a3b8</color>
+    <color name="border_color">#1e293b</color>
+</resources>

@@ -557,6 +557,22 @@ def api_download():
     return send_file(path, as_attachment=True)
 
 
+@app.get("/download/apk")
+def download_apk():
+    apk_path = BASE / "RemotePC-Controller.apk"
+    if not apk_path.exists():
+        apk_path = BASE / "dist" / "RemotePC-Controller.apk"
+    if apk_path.exists():
+        return send_file(
+            apk_path,
+            as_attachment=True,
+            download_name="RemotePC-Controller.apk",
+            mimetype="application/vnd.android.package-archive"
+        )
+    return jsonify(error="APK not found on server"), 404
+
+
+
 @app.post("/api/files/upload")
 @login_required
 def api_upload():
@@ -1609,6 +1625,11 @@ img { width: 100%; border-radius: 12px; margin-top: 8px; }
   </div>
   <input id="pw" type="password" placeholder="Password (mexxz@2007)" style="margin-bottom:12px">
   <button class="acc" style="width:100%" onclick="login()">Log In</button>
+  <div style="text-align:center;margin-top:16px">
+    <a href="/download/apk" style="color:var(--acc);font-size:12px;text-decoration:none;display:inline-flex;align-items:center;gap:6px">
+      <span>📱</span> Download Android Controller APK
+    </a>
+  </div>
 </div>
 
 <!-- Main Application -->
@@ -1621,6 +1642,9 @@ img { width: 100%; border-radius: 12px; margin-top: 8px; }
       <span class="brand-badge">PRO FLEET</span>
     </div>
     <div style="display:flex;align-items:center;gap:10px">
+      <a href="/download/apk" class="btn" style="text-decoration:none;padding:5px 10px;font-size:12px;background:var(--srf2);color:var(--txt);border:1px solid var(--brd);border-radius:6px;display:inline-flex;align-items:center;gap:4px">
+        <span>📱</span> Android APK
+      </a>
       <span class="pulse-dot"></span>
       <span style="font-size:12px;color:var(--grn);font-weight:600">ONLINE</span>
       <button style="padding:5px 10px;font-size:12px" onclick="logout()">Log out</button>

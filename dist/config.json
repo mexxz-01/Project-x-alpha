@@ -23,5 +23,12 @@
     "Task Manager": "taskmgr.exe",
     "Chrome": "start chrome"
   },
-  "fleet": []
+  "fleet": [
+    {
+      "id": "89ed8312",
+      "name": "172.21.112.1",
+      "url": "http://172.21.112.1:8765",
+      "group": "Default"
+    }
+  ]
 }

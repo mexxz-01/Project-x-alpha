@@ -1,8 +1,4 @@
 @echo off
-REM Launches RemotePC minimized on the Windows Taskbar
+REM Launches RemotePC minimized on the Windows Taskbar as Administrator
 cd /d "%~dp0"
-if exist "%~dp0dist\RemotePC.exe" (
-    start "RemotePC" /min "%~dp0dist\RemotePC.exe"
-) else (
-    start "RemotePC" /min python server.py
-)
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process cmd.exe -ArgumentList '/c \"\"%~dp0run-as-admin.bat\"\"' -WindowStyle Hidden"

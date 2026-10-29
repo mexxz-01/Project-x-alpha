@@ -1,4 +1,21 @@
 @echo off
-REM Starts RemotePC with Administrator rights (Windows will ask you to click "Yes" once, on the PC).
+title RemotePC Admin Launcher
 cd /d "%~dp0"
-powershell -NoProfile -Command "Start-Process python -ArgumentList 'server.py' -Verb RunAs -WorkingDirectory '%~dp0'"
+
+REM Check if already running as admin
+net session >nul 2>&1
+if %errorlevel% == 0 (
+    echo [OK] Running with Administrator privileges.
+    if exist "%~dp0dist\RemotePC.exe" (
+        start "RemotePC" /min "%~dp0dist\RemotePC.exe"
+    ) else (
+        start "RemotePC" /min python server.py
+    )
+    timeout /t 2 /nobreak >nul
+    start http://localhost:8765
+    exit
+) else (
+    echo Elevating to Administrator...
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process cmd.exe -ArgumentList '/c \"\"%~f0\"\"' -Verb RunAs"
+    exit
+)

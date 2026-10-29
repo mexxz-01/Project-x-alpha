@@ -1,9 +1,10 @@
 flask
+gunicorn
 psutil
 pillow
-pyautogui
+pyautogui; sys_platform == "win32"
 pyperclip
-screen-brightness-control
+screen-brightness-control; sys_platform == "win32"
 opencv-python-headless
 pycaw; sys_platform == "win32"
 comtypes; sys_platform == "win32"

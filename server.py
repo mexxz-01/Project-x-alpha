@@ -1705,11 +1705,19 @@ def lan_ip():
         s.close()
 
 
+# Start background monitor thread
+try:
+    threading.Thread(target=monitor, daemon=True).start()
+except Exception:
+    pass
+
+
 if __name__ == "__main__":
+    port = int(os.environ.get("PORT", CFG["port"]))
+    host = os.environ.get("HOST", CFG["host"])
     print("\n=== RemotePC running ===")
-    print(f"Open on your phone (same Wi-Fi):  http://{lan_ip()}:{CFG['port']}")
+    print(f"Open on your phone:  http://{lan_ip()}:{port}")
     if FIRST_PASSWORD:
         print(f"Your password (shown once, change by deleting config.json): {FIRST_PASSWORD}")
     print("Do NOT port-forward this to the internet. For outside-home access use Tailscale.\n")
-    threading.Thread(target=monitor, daemon=True).start()
-    app.run(host=CFG["host"], port=CFG["port"], threaded=True)
+    app.run(host=host, port=port, threaded=True)

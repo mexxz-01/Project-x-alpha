@@ -24,6 +24,11 @@ echo [*] Removing Windows Firewall rules (if any)...
 netsh advfirewall firewall delete rule name="Project-X-Nano" >nul 2>&1
 netsh advfirewall firewall delete rule name="RemotePC" >nul 2>&1
 
+echo [*] Deleting installation folders and files...
+if exist "%LOCALAPPDATA%\Project-X-Nano" rmdir /s /q "%LOCALAPPDATA%\Project-X-Nano" >nul 2>&1
+if exist "%LOCALAPPDATA%\RemotePC" rmdir /s /q "%LOCALAPPDATA%\RemotePC" >nul 2>&1
+if exist "C:\RemotePC" rmdir /s /q "C:\RemotePC" >nul 2>&1
+
 echo.
 echo ========================================================
 echo [OK] Project-X-Nano has been completely uninstalled!

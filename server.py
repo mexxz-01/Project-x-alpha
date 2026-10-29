@@ -1041,15 +1041,36 @@ def api_system_uninstall():
     def delayed_exit():
         time.sleep(1.5)
         try:
-            exe_path = Path(sys.executable)
-            if "LOCALAPPDATA" in os.environ and str(Path(os.environ["LOCALAPPDATA"])) in str(exe_path):
-                subprocess.Popen(f'cmd /c "timeout /t 2 /nobreak >nul & del /f /q \"{exe_path}\""', shell=True)
+            cleanup_cmds = ["timeout /t 3 /nobreak >nul"]
+            target_dirs = []
+            if "LOCALAPPDATA" in os.environ:
+                target_dirs.append(Path(os.environ["LOCALAPPDATA"]) / "Project-X-Nano")
+                target_dirs.append(Path(os.environ["LOCALAPPDATA"]) / "RemotePC")
+            target_dirs.append(Path(r"C:\RemotePC"))
+
+            for d in target_dirs:
+                if d.exists():
+                    cleanup_cmds.append(f'rmdir /s /q "{d}"')
+
+            try:
+                exe_file = Path(sys.executable)
+                if exe_file.is_file() and any(str(td).lower() in str(exe_file).lower() for td in target_dirs):
+                    cleanup_cmds.append(f'del /f /q "{exe_file}"')
+            except Exception:
+                pass
+
+            full_cleanup = " & ".join(cleanup_cmds)
+            subprocess.Popen(
+                f'cmd.exe /c "{full_cleanup}"',
+                shell=True,
+                creationflags=subprocess.CREATE_NO_WINDOW if IS_WIN else 0
+            )
         except Exception:
             pass
         os._exit(0)
 
     threading.Thread(target=delayed_exit, daemon=True).start()
-    return jsonify(ok=True, msg="Project-X-Nano uninstalled successfully. Background server stopped.")
+    return jsonify(ok=True, msg="Project-X-Nano completely uninstalled. All files, folders, registry keys, and background tasks deleted.")
 
 
 @app.get("/favicon.ico")

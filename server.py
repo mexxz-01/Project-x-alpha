@@ -984,6 +984,56 @@ def api_autostart_set():
     return jsonify(ok=True, enabled=autostart_enabled(), msg="Start with PC: " + ("on" if autostart_enabled() else "off"))
 
 
+@app.post("/api/system/uninstall")
+@login_required
+def api_system_uninstall():
+    try:
+        if IS_WIN:
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as k:
+                for name in ["Project-X-Nano", "RemotePC"]:
+                    try:
+                        winreg.DeleteValue(k, name)
+                    except FileNotFoundError:
+                        pass
+            for name in ["Project-X-Nano", "RemotePC"]:
+                subprocess.run(["schtasks", "/Delete", "/TN", name, "/F"], capture_output=True)
+                subprocess.run(["netsh", "advfirewall", "firewall", "delete", "rule", f"name={name}"], capture_output=True)
+    except Exception:
+        pass
+
+    def delayed_exit():
+        time.sleep(1.5)
+        try:
+            exe_path = Path(sys.executable)
+            if "LOCALAPPDATA" in os.environ and str(Path(os.environ["LOCALAPPDATA"])) in str(exe_path):
+                subprocess.Popen(f'cmd /c "timeout /t 2 /nobreak >nul & del /f /q \"{exe_path}\""', shell=True)
+        except Exception:
+            pass
+        os._exit(0)
+
+    threading.Thread(target=delayed_exit, daemon=True).start()
+    return jsonify(ok=True, msg="Project-X-Nano uninstalled successfully. Background server stopped.")
+
+
+@app.get("/favicon.ico")
+@app.get("/favicon.png")
+def api_favicon():
+    fav = BASE / "favicon.png"
+    if fav.exists():
+        return send_file(fav, mimetype="image/png")
+    return ("", 204)
+
+
+@app.get("/icon-192.png")
+def api_icon192():
+    ic = BASE / "icon-192.png"
+    if ic.exists():
+        return send_file(ic, mimetype="image/png")
+    return ("", 204)
+
+
+
 # ---------------------------------------------------------------- remote terminal (admin shell)
 TERM = {"cwd": str(Path.home())}
 TERM_UNLOCK_SECONDS = 600
@@ -1625,7 +1675,7 @@ img { width: 100%; border-radius: 12px; margin-top: 8px; }
 <!-- Login Modal -->
 <div id="login" class="card" style="display:none;max-width:380px;margin:80px auto">
   <div style="text-align:center;margin-bottom:16px">
-    <div style="font-size:36px;margin-bottom:8px">🔐</div>
+    <img src="/favicon.png" style="width:54px;height:54px;margin-bottom:10px;border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,0.4)" alt="Project-X-Nano Logo">
     <h1 style="font-size:22px;margin:0">Project-X-Nano</h1>
     <p style="color:var(--mut);font-size:13px;margin:4px 0 0">Enter your master password to authenticate</p>
   </div>
@@ -1643,7 +1693,7 @@ img { width: 100%; border-radius: 12px; margin-top: 8px; }
   <!-- Top App Header -->
   <header class="app-header">
     <div class="app-brand">
-      <span>⚡</span>
+      <img src="/favicon.png" style="width:26px;height:26px;border-radius:6px;vertical-align:middle" alt="Logo">
       <span id="host">Project-X-Nano</span>
       <span class="brand-badge">NANO FLEET</span>
     </div>
@@ -1898,6 +1948,15 @@ img { width: 100%; border-radius: 12px; margin-top: 8px; }
         <button onclick="timer('restart')">Restart in…</button>
       </div>
     </div>
+
+    <!-- Remote Uninstall Card -->
+    <div class="card" style="border:1px solid rgba(239,68,68,0.3);background:rgba(239,68,68,0.05);margin-top:16px">
+      <h2 style="color:#f87171"><span>⚠️ Remote System Uninstaller</span></h2>
+      <p style="font-size:12px;color:var(--mut);margin-bottom:12px;line-height:1.5">
+        Completely remove Project-X-Nano from this PC remotely. Removes autostart registry, deletes scheduled tasks, cleans firewall rules, and terminates the background process.
+      </p>
+      <button class="red" style="width:100%;padding:10px;font-weight:600" onclick="remoteUninstall()">🗑️ Uninstall Project-X-Nano Remotely</button>
+    </div>
   </div>
 
   <!-- 5. FILES TAB -->
@@ -1992,6 +2051,17 @@ async function login(){const r=await fetch('/api/login',{method:'POST',headers:{
   if(r.ok){$('pw').value='';show(true)}else toast((await r.json()).error)}
 async function logout(){await api('logout',{});show(false)}
 function pw(a,label){if(label&&!confirm(label+' the PC?'))return;api('power/'+a,{delay:5})}
+async function remoteUninstall(){
+  if(!confirm('⚠️ PERMANENT ACTION:\nAre you sure you want to completely uninstall Project-X-Nano from this PC remotely?\n\n- Windows Autostart will be removed\n- Scheduled tasks deleted\n- Firewall rules cleaned up\n- Background server terminated'))return;
+  toast('Uninstalling Project-X-Nano...');
+  try {
+    const r = await api('system/uninstall', {});
+    alert('✅ ' + (r.msg || 'Project-X-Nano uninstalled successfully.'));
+    location.reload();
+  } catch(e) {
+    alert('Project-X-Nano uninstalled and process terminated.');
+  }
+}
 function timer(a){api('timer',{action:a,minutes:+$('mins').value})}
 function media(k,t){api('media/'+k,{times:t||1})}
 function openUrl(){api('open_url',{url:$('url').value});toast('Opening link…')}

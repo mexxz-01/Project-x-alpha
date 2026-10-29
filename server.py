@@ -115,7 +115,7 @@ def load_config():
     if os.environ.get("NTFY_TOPIC"):
         cfg["ntfy_topic"] = os.environ["NTFY_TOPIC"]
 
-    if not cfg.get("password_hash") or not check_password_hash(cfg["password_hash"], "mexxz@2007"):
+    if not cfg.get("password_hash"):
         cfg["password_hash"] = DEFAULT_CONFIG["password_hash"]
 
     if not cfg["secret_key"]:
@@ -158,7 +158,7 @@ def login():
     if time.time() < locked:
         return jsonify(error="Too many attempts. Wait a minute."), 429
     pw = (request.get_json(silent=True) or {}).get("password", "")
-    if check_password_hash(CFG["password_hash"], pw) or pw == "mexxz@2007":
+    if check_password_hash(CFG["password_hash"], pw):
         FAILS.pop(ip, None)
         session["ok"] = True
         session.permanent = True
@@ -1084,7 +1084,7 @@ def api_term_unlock():
     if time.time() < locked:
         return jsonify(error="Too many attempts. Wait a minute."), 429
     pw = (request.get_json(silent=True) or {}).get("password", "")
-    if not (check_password_hash(CFG["password_hash"], pw) or pw == "mexxz@2007"):
+    if not check_password_hash(CFG["password_hash"], pw):
         count += 1
         FAILS[key] = (count, time.time() + 60 if count >= 3 else 0)
         audit("terminal unlock FAILED")
@@ -1679,7 +1679,7 @@ img { width: 100%; border-radius: 12px; margin-top: 8px; }
     <h1 style="font-size:22px;margin:0">Project-X-Nano</h1>
     <p style="color:var(--mut);font-size:13px;margin:4px 0 0">Enter your master password to authenticate</p>
   </div>
-  <input id="pw" type="password" placeholder="Password (mexxz@2007)" style="margin-bottom:12px">
+  <input id="pw" type="password" placeholder="Enter Master Password" style="margin-bottom:12px">
   <button class="acc" style="width:100%" onclick="login()">Log In</button>
   <div style="text-align:center;margin-top:16px">
     <a href="/download/apk" style="color:var(--acc);font-size:12px;text-decoration:none;display:inline-flex;align-items:center;gap:6px">
@@ -1999,7 +1999,7 @@ img { width: 100%; border-radius: 12px; margin-top: 8px; }
       </div>
       <div id="termLocked" style="display:none;background:#0d101a;padding:14px;border-radius:12px;border:1px solid var(--card-border)">
         <div style="font-size:13px;color:var(--mut);margin-bottom:8px">🔐 Re-enter your password to unlock the terminal console (10 min session)</div>
-        <input id="tpw" type="password" placeholder="Password (mexxz@2007)" style="margin-bottom:8px">
+        <input id="tpw" type="password" placeholder="Enter Master Password" style="margin-bottom:8px">
         <button class="acc" onclick="termUnlock()" style="width:100%">🔓 Unlock Console</button>
       </div>
       <div id="termOn" style="display:none">

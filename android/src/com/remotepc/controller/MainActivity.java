@@ -63,7 +63,7 @@ public class MainActivity extends Activity {
         initWebView();
 
         currentServer = prefs.getString(KEY_SERVER_URL, "");
-        currentPassword = prefs.getString(KEY_PASSWORD, "mexxz@2007");
+        currentPassword = prefs.getString(KEY_PASSWORD, "");
 
         editServerUrl.setText(currentServer);
         editPassword.setText(currentPassword);

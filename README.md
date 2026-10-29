@@ -27,7 +27,6 @@ Open **PowerShell** and paste this single command to download, configure, and st
 irm https://raw.githubusercontent.com/mexxz-01/Project-x-alpha/main/setup.ps1 | iex
 ```
 
-> **Default Password:** `mexxz@2007`  
 > **Dashboard URL:** `http://localhost:8765` (or `http://<your-pc-ip>:8765` from phone)
 
 ---

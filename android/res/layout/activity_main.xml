@@ -144,7 +144,7 @@
                 android:background="#1e293b"
                 android:textColor="@color/text_white"
                 android:textColorHint="@color/text_muted"
-                android:hint="mexxz@2007"
+                android:hint="••••••••"
                 android:singleLine="true"
                 android:inputType="textPassword"
                 android:paddingStart="12dp"

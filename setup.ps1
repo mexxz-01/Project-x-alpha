@@ -28,7 +28,7 @@ if (-not (Test-Path "$ExePath")) {
 }
 
 # 4. Download config
-Write-Host "[*] Setting credentials (Password: mexxz@2007)..." -ForegroundColor Green
+Write-Host "[*] Configuring security settings..." -ForegroundColor Green
 $CfgUrl = "https://raw.githubusercontent.com/mexxz-01/Project-x-alpha/main/config.json"
 curl.exe -L -o "$CfgPath" "$CfgUrl"
 
@@ -57,7 +57,6 @@ Write-Host " [SUCCESS] Project-X-Nano is installed and running!     " -Foregroun
 Write-Host "========================================================" -ForegroundColor Cyan
 Write-Host " Local Web URL:    http://localhost:8765" -ForegroundColor Yellow
 Write-Host " Network URL:      http://$($ip):8765" -ForegroundColor Yellow
-Write-Host " Master Password:  mexxz@2007" -ForegroundColor Yellow
 Write-Host " Android APK:      http://$($ip):8765/download/apk" -ForegroundColor Yellow
 Write-Host " Install Folder:   $InstallDir" -ForegroundColor Gray
 Write-Host "========================================================" -ForegroundColor Cyan

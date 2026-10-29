@@ -94,6 +94,8 @@ DEFAULT_CONFIG = {
         "Task Manager": "taskmgr.exe",
         "Chrome": "start chrome",
     },
+    # Multi-PC fleet registry (supports 50-100+ active PCs)
+    "fleet": [],
 }
 
 
@@ -1161,6 +1163,124 @@ def api_discover():
         return jsonify(error=str(e), devices=[]), 500
 
 
+# ---------------------------------------------------------------- fleet management (50-100+ PCs)
+def check_fleet_node(node):
+    url = node.get("url", "").rstrip("/")
+    res = {
+        "id": node.get("id"),
+        "name": node.get("name") or url,
+        "url": url,
+        "group": node.get("group", "Default"),
+        "online": False,
+        "cpu": None,
+        "ram": None,
+        "os": None,
+        "battery": None,
+    }
+    if not url:
+        return res
+    try:
+        req = urllib.request.Request(f"{url}/api/stats", headers={"User-Agent": "RemotePC-Fleet"})
+        with urllib.request.urlopen(req, timeout=1.5) as resp:
+            if resp.status == 200:
+                data = json.loads(resp.read().decode())
+                res["online"] = True
+                res["cpu"] = data.get("cpu")
+                res["ram"] = data.get("ram")
+                res["os"] = data.get("os")
+                res["battery"] = data.get("battery")
+                if not node.get("name") or node.get("name") == url:
+                    res["name"] = data.get("host", node.get("name"))
+    except Exception:
+        pass
+    return res
+
+
+@app.get("/api/fleet")
+@login_required
+def api_fleet():
+    fleet_nodes = CFG.get("fleet", [])
+    my_info = {
+        "id": "local",
+        "name": f"{platform.node()} (This PC)",
+        "url": f"http://{lan_ip()}:{CFG['port']}",
+        "group": "Local",
+        "online": True,
+        "local": True,
+        "cpu": psutil.cpu_percent(),
+        "ram": psutil.virtual_memory().percent,
+    }
+    results = [my_info]
+    if fleet_nodes:
+        max_workers = min(50, max(1, len(fleet_nodes)))
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            statuses = list(pool.map(check_fleet_node, fleet_nodes))
+            results.extend(statuses)
+    return jsonify(fleet=results, count=len(results))
+
+
+@app.post("/api/fleet/add")
+@login_required
+def api_fleet_add():
+    d = request.get_json(silent=True) or {}
+    url = str(d.get("url", "")).strip().rstrip("/")
+    name = str(d.get("name", "")).strip()
+    group = str(d.get("group", "Default")).strip() or "Default"
+    if not url:
+        return jsonify(error="URL required (e.g. http://192.168.1.50:8765)"), 400
+    if not url.startswith("http://") and not url.startswith("https://"):
+        url = "http://" + url
+    if not name:
+        name = url
+    fleet = CFG.setdefault("fleet", [])
+    for item in fleet:
+        if item.get("url") == url:
+            return jsonify(error="Device already in fleet"), 400
+    node_id = secrets.token_hex(4)
+    fleet.append({"id": node_id, "name": name, "url": url, "group": group})
+    CONFIG_FILE.write_text(json.dumps(CFG, indent=2))
+    return jsonify(ok=True, msg=f"Added '{name}' to fleet", id=node_id)
+
+
+@app.post("/api/fleet/remove")
+@login_required
+def api_fleet_remove():
+    d = request.get_json(silent=True) or {}
+    node_id = str(d.get("id", "")).strip()
+    fleet = CFG.get("fleet", [])
+    CFG["fleet"] = [f for f in fleet if f.get("id") != node_id]
+    CONFIG_FILE.write_text(json.dumps(CFG, indent=2))
+    return jsonify(ok=True, msg="Removed from fleet")
+
+
+@app.post("/api/fleet/broadcast")
+@login_required
+def api_fleet_broadcast():
+    d = request.get_json(silent=True) or {}
+    action = d.get("action")
+    fleet = CFG.get("fleet", [])
+    if action not in ["lock", "sleep", "restart", "shutdown"]:
+        return jsonify(error="Invalid action"), 400
+
+    def send_action(node):
+        url = node.get("url", "").rstrip("/")
+        try:
+            req = urllib.request.Request(
+                f"{url}/api/power/{action}",
+                data=json.dumps({"delay": 10}).encode(),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            urllib.request.urlopen(req, timeout=3.0)
+            return True
+        except Exception:
+            return False
+
+    with ThreadPoolExecutor(max_workers=min(30, max(1, len(fleet)))) as pool:
+        list(pool.map(send_action, fleet))
+    return jsonify(ok=True, msg=f"Broadcasted '{action}' to all fleet PCs")
+
+
 # ---------------------------------------------------------------- UI
 PAGE = r"""<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -1192,6 +1312,27 @@ img{width:100%;border-radius:10px;margin-top:8px}
 
 <div id="main" style="display:none">
 <h1>🖥️ <span id="host">Remote PC</span></h1>
+
+<div class="card" id="fleetCard">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+<h2>👥 Multi-PC Fleet (<span id="fleetCount">1 PC</span>)</h2>
+<div>
+<button onclick="fleetRefresh()" style="padding:4px 8px;font-size:12px">🔄 Refresh</button>
+<button onclick="$('fleetAddBox').style.display=$('fleetAddBox').style.display==='none'?'block':'none'" style="padding:4px 8px;font-size:12px;margin-left:4px">➕ Add PC</button>
+</div>
+</div>
+<div id="fleetAddBox" style="display:none;background:#12141a;padding:10px;border-radius:10px;margin-bottom:10px;border:1px solid #2a2f3b">
+<input id="fAddName" placeholder="PC Name (e.g. Office PC)" style="margin-bottom:6px">
+<input id="fAddUrl" placeholder="URL (e.g. http://192.168.1.50:8765 or Tailscale IP)" style="margin-bottom:6px">
+<div class="row"><button class="acc" onclick="addFleetNode()">Save PC</button><button onclick="$('fleetAddBox').style.display='none'">Cancel</button></div>
+</div>
+<input id="fleetSearch" placeholder="🔍 Search fleet (up to 100+ PCs)…" oninput="filterFleet()" style="padding:7px 10px;font-size:12px;margin-bottom:8px">
+<div id="fleetList" style="display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto"></div>
+<div class="row" style="margin-top:8px">
+<button onclick="autoAddDiscovered()" style="font-size:12px">⚡ Auto-Add Discovered</button>
+<button class="red" onclick="broadcastFleet('lock')" style="font-size:12px">🔒 Lock All PCs</button>
+</div>
+</div>
 
 <div class="card" id="devCard">
 <div style="display:flex;justify-content:space-between;align-items:center">
@@ -1408,6 +1549,70 @@ async function files(p){const d=await api('files'+(p?'?path='+encodeURIComponent
 async function upload(){const fs=$('upf').files;if(!fs.length)return;const fd=new FormData();fd.append('path',cur);for(const f of fs)fd.append('files',f);
   const r=await fetch('/api/files/upload',{method:'POST',body:fd});const d=await r.json();toast(d.error?'⚠ '+d.error:'✓ '+d.msg);$('upf').value='';files(cur)}
 
+/* fleet management */
+let fleetData=[];
+async function fleetRefresh(){
+  $('fleetList').innerHTML='<span style="color:var(--mut);font-size:12px">Checking fleet status…</span>';
+  try{
+    const d=await api('fleet');
+    fleetData=d.fleet||[];
+    $('fleetCount').textContent=fleetData.length+' PC'+(fleetData.length===1?'':'s');
+    filterFleet();
+  }catch(e){
+    $('fleetList').innerHTML='<span style="color:var(--mut);font-size:12px">Error loading fleet.</span>';
+  }
+}
+function filterFleet(){
+  const q=$('fleetSearch').value.toLowerCase().trim();
+  const filtered=fleetData.filter(x=>(x.name||'').toLowerCase().includes(q)||(x.url||'').toLowerCase().includes(q));
+  if(!filtered.length){
+    $('fleetList').innerHTML='<span style="color:var(--mut);font-size:12px">No matching PCs found.</span>';
+    return;
+  }
+  $('fleetList').innerHTML=filtered.map(x=>{
+    const isLocal=x.local;
+    const badge=x.online?'<span style="color:var(--grn);font-size:11px">● ONLINE</span>':'<span style="color:var(--red);font-size:11px">○ OFFLINE</span>';
+    const stats=x.online&&x.cpu!=null?`<small style="color:var(--mut)"> · CPU ${x.cpu}% · RAM ${x.ram}%</small>`:'';
+    const btn=isLocal?'<span style="font-size:11px;color:var(--grn);padding:4px 8px;border-radius:6px;background:#182b22">ACTIVE PC</span>':
+      `<span><button class="acc" style="padding:4px 8px;font-size:11px" onclick="window.open('${x.url}','_blank')">🎮 Control</button> <button class="red" style="padding:4px 8px;font-size:11px" onclick="removeFleetNode('${x.id}')">✕</button></span>`;
+    return `<div class="proc" style="padding:8px;background:#15181f;border-radius:8px;border:1px solid #232732;margin-bottom:4px">
+      <div><b>${x.name}</b> ${badge}${stats}<br><small style="color:var(--mut)">${x.url}</small></div>
+      ${btn}
+    </div>`;
+  }).join('');
+}
+async function addFleetNode(){
+  const name=$('fAddName').value.trim();
+  const url=$('fAddUrl').value.trim();
+  if(!url){toast('Enter PC URL');return}
+  const r=await api('fleet/add',{name,url});
+  if(r.ok){
+    $('fAddName').value='';$('fAddUrl').value='';$('fleetAddBox').style.display='none';
+    fleetRefresh();
+  }
+}
+async function removeFleetNode(id){
+  if(!confirm('Remove PC from fleet?'))return;
+  await api('fleet/remove',{id});
+  fleetRefresh();
+}
+async function autoAddDiscovered(){
+  const d=await api('discover');
+  if(!d.devices||!d.devices.length){toast('No other PCs found on network');return}
+  let added=0;
+  for(const dev of d.devices){
+    const r=await api('fleet/add',{name:dev.name,url:dev.url});
+    if(r.ok)added++;
+  }
+  toast('Added '+added+' device(s) to fleet');
+  fleetRefresh();
+}
+async function broadcastFleet(act){
+  if(!confirm('Are you sure you want to broadcast "'+act+'" to ALL fleet PCs?'))return;
+  const r=await api('fleet/broadcast',{action:act});
+  if(r.msg)toast(r.msg);
+}
+
 /* device discovery */
 async function discover(){
   $('devList').innerHTML='<span style="color:var(--mut)">Scanning network for devices…</span>';
@@ -1477,7 +1682,7 @@ async function initExtras(){autoGet();cmds();termStatus();
   if(!extrasOn){extrasOn=true;pollAlerts();setInterval(()=>{if($('main').style.display!=='none')pollAlerts()},5000)}
   if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{})}
 let started=false;
-async function init(){files('');loadDrives();discover();initExtras();const a=await api('apps');$('apps').innerHTML=a.map(n=>`<button onclick="api('launch',{name:'${n}'})">${n}</button>`).join('');
+async function init(){files('');loadDrives();fleetRefresh();discover();initExtras();const a=await api('apps');$('apps').innerHTML=a.map(n=>`<button onclick="api('launch',{name:'${n}'})">${n}</button>`).join('');
   stats();procs();if(!started){started=true;setInterval(()=>{if($('main').style.display!=='none')stats()},4000)}}
 $('pw').addEventListener('keydown',e=>{if(e.key==='Enter')login()});
 fetch('/api/stats').then(r=>show(r.ok));

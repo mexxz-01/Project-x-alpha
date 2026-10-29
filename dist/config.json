@@ -22,5 +22,6 @@
     "File Explorer": "explorer.exe",
     "Task Manager": "taskmgr.exe",
     "Chrome": "start chrome"
-  }
+  },
+  "fleet": []
 }

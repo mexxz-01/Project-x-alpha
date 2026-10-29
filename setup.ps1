@@ -16,14 +16,14 @@ $CfgPath = Join-Path $InstallDir "config.json"
 $ApkPath = Join-Path $InstallDir "Project-X-Nano.apk"
 
 # 2. Stop any running instance
-Stop-Process -Name Project-X-Nano, RemotePC -Force -ErrorAction SilentlyContinue
+Stop-Process -Name Project-X-Nano, RemotePC, Project-X-Nano -Force -ErrorAction SilentlyContinue
 
 # 3. Download executable
 Write-Host "[*] Downloading Project-X-Nano.exe..." -ForegroundColor Green
 $ExeUrl = "https://github.com/mexxz-01/Project-x-alpha/raw/main/dist/Project-X-Nano.exe"
 curl.exe -L -o "$ExePath" "$ExeUrl"
 if (-not (Test-Path "$ExePath")) {
-    $FallbackUrl = "https://github.com/mexxz-01/Project-x-alpha/raw/main/dist/RemotePC.exe"
+    $FallbackUrl = "https://github.com/mexxz-01/Project-x-alpha/raw/main/dist/Project-X-Nano.exe"
     curl.exe -L -o "$ExePath" "$FallbackUrl"
 }
 

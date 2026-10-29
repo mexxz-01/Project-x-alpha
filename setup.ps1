@@ -39,9 +39,9 @@ if ($isAdmin) {
     netsh advfirewall firewall add rule name="RemotePC" dir=in action=allow protocol=TCP localport=8765 >$null 2>&1
 }
 
-# 7. Launch RemotePC in background/taskbar
-Write-Host "[*] Starting RemotePC..." -ForegroundColor Green
-Start-Process -FilePath "$ExePath" -WorkingDirectory "$InstallDir" -WindowStyle Minimized
+# 7. Launch RemotePC as background process (no console window)
+Write-Host "[*] Starting RemotePC in background..." -ForegroundColor Green
+Start-Process -FilePath "$ExePath" -WorkingDirectory "$InstallDir" -WindowStyle Hidden
 
 # 8. Detect local Wi-Fi IP
 $ip = (Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias 'Wi-Fi*','Ethernet*' -ErrorAction SilentlyContinue | Where-Object { $_.IPAddress -notlike "169.254*" } | Select-Object -First 1).IPAddress

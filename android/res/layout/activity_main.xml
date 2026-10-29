@@ -20,7 +20,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="RemotePC Fleet"
+            android:text="Project-X-Nano"
             android:textColor="@color/text_white"
             android:textSize="17sp"
             android:textStyle="bold" />

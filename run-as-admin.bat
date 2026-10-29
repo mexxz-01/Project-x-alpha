@@ -1,15 +1,17 @@
 @echo off
-title RemotePC Admin Launcher
+title Project-X-Nano Admin Launcher
 cd /d "%~dp0"
 
 REM Check if already running as admin
 net session >nul 2>&1
 if %errorlevel% == 0 (
     echo [OK] Running with Administrator privileges.
-    if exist "%~dp0dist\RemotePC.exe" (
-        start "RemotePC" /min "%~dp0dist\RemotePC.exe"
+    if exist "%~dp0dist\Project-X-Nano.exe" (
+        start "Project-X-Nano" "%~dp0dist\Project-X-Nano.exe"
+    ) else if exist "%~dp0dist\RemotePC.exe" (
+        start "Project-X-Nano" "%~dp0dist\RemotePC.exe"
     ) else (
-        start "RemotePC" /min python server.py
+        start "Project-X-Nano" python server.py
     )
     timeout /t 2 /nobreak >nul
     start http://localhost:8765

@@ -1,5 +1,5 @@
 """
-RemotePC - control your own PC from your phone/browser.
+Project-X-Nano - control your own PC from your phone/browser.
 
 Run on the PC you want to control:   python server.py
 Then open the printed URL on your phone (same Wi-Fi) and log in.
@@ -559,16 +559,15 @@ def api_download():
 
 @app.get("/download/apk")
 def download_apk():
-    apk_path = BASE / "RemotePC-Controller.apk"
-    if not apk_path.exists():
-        apk_path = BASE / "dist" / "RemotePC-Controller.apk"
-    if apk_path.exists():
-        return send_file(
-            apk_path,
-            as_attachment=True,
-            download_name="RemotePC-Controller.apk",
-            mimetype="application/vnd.android.package-archive"
-        )
+    for name in ["Project-X-Nano.apk", "RemotePC-Controller.apk"]:
+        for loc in [BASE / name, BASE / "dist" / name]:
+            if loc.exists():
+                return send_file(
+                    loc,
+                    as_attachment=True,
+                    download_name="Project-X-Nano.apk",
+                    mimetype="application/vnd.android.package-archive"
+                )
     return jsonify(error="APK not found on server"), 404
 
 
@@ -914,11 +913,15 @@ def autostart_enabled():
 
         try:
             with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as k:
-                winreg.QueryValueEx(k, "RemotePC")
-            return True
+                try:
+                    winreg.QueryValueEx(k, "Project-X-Nano")
+                    return True
+                except OSError:
+                    winreg.QueryValueEx(k, "RemotePC")
+                    return True
         except OSError:
             pass
-        return subprocess.run(["schtasks", "/Query", "/TN", "RemotePC"], capture_output=True).returncode == 0
+        return subprocess.run(["schtasks", "/Query", "/TN", "Project-X-Nano"], capture_output=True).returncode == 0
     return LINUX_AUTOSTART.exists()
 
 
@@ -928,21 +931,24 @@ def set_autostart(on):
 
         def drop_registry():
             with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as k:
-                try:
-                    winreg.DeleteValue(k, "RemotePC")
-                except FileNotFoundError:
-                    pass
+                for name in ["Project-X-Nano", "RemotePC"]:
+                    try:
+                        winreg.DeleteValue(k, name)
+                    except FileNotFoundError:
+                        pass
 
         def drop_task():
+            for name in ["Project-X-Nano", "RemotePC"]:
+                subprocess.run(["schtasks", "/Delete", "/TN", name, "/F"], capture_output=True)
             subprocess.run(["schtasks", "/Delete", "/TN", "RemotePC", "/F"], capture_output=True)
 
         drop_registry()
         drop_task()
         if on and CFG.get("autostart_as_admin"):
             if not is_admin():
-                raise ValueError("Start RemotePC as Administrator once, then enable this (needed to create the admin startup task)")
+                raise ValueError("Start Project-X-Nano as Administrator once, then enable this (needed to create the admin startup task)")
             r = subprocess.run(
-                ["schtasks", "/Create", "/TN", "RemotePC", "/TR", autostart_command(),
+                ["schtasks", "/Create", "/TN", "Project-X-Nano", "/TR", autostart_command(),
                  "/SC", "ONLOGON", "/RL", "HIGHEST", "/F"],
                 capture_output=True, text=True,
             )
@@ -950,13 +956,13 @@ def set_autostart(on):
                 raise ValueError("schtasks failed: " + (r.stderr or r.stdout)[:200])
         elif on:
             with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as k:
-                winreg.SetValueEx(k, "RemotePC", 0, winreg.REG_SZ, autostart_command())
+                winreg.SetValueEx(k, "Project-X-Nano", 0, winreg.REG_SZ, autostart_command())
     elif IS_MAC:
         raise ValueError("Not supported on macOS")
     elif on:
         LINUX_AUTOSTART.parent.mkdir(parents=True, exist_ok=True)
         LINUX_AUTOSTART.write_text(
-            f"[Desktop Entry]\nType=Application\nName=RemotePC\nExec={sys.executable} {Path(__file__).resolve()}\n"
+            f"[Desktop Entry]\nType=Application\nName=Project-X-Nano\nExec={sys.executable} {Path(__file__).resolve()}\n"
         )
     else:
         LINUX_AUTOSTART.unlink(missing_ok=True)
@@ -1313,11 +1319,11 @@ def api_fleet_broadcast():
 # ---------------------------------------------------------------- UI
 PAGE = r"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>RemotePC Pro</title>
+<title>Project-X-Nano</title>
 <link rel="manifest" href="/manifest.json"><meta name="theme-color" content="#090a10">
 <link rel="apple-touch-icon" href="/icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="RemotePC">
+<meta name="apple-mobile-web-app-title" content="Project-X-Nano">
 <style>
 :root {
   --bg: #090b12;
@@ -1620,7 +1626,7 @@ img { width: 100%; border-radius: 12px; margin-top: 8px; }
 <div id="login" class="card" style="display:none;max-width:380px;margin:80px auto">
   <div style="text-align:center;margin-bottom:16px">
     <div style="font-size:36px;margin-bottom:8px">🔐</div>
-    <h1 style="font-size:22px;margin:0">RemotePC Pro</h1>
+    <h1 style="font-size:22px;margin:0">Project-X-Nano</h1>
     <p style="color:var(--mut);font-size:13px;margin:4px 0 0">Enter your master password to authenticate</p>
   </div>
   <input id="pw" type="password" placeholder="Password (mexxz@2007)" style="margin-bottom:12px">
@@ -1637,9 +1643,9 @@ img { width: 100%; border-radius: 12px; margin-top: 8px; }
   <!-- Top App Header -->
   <header class="app-header">
     <div class="app-brand">
-      <span>🖥️</span>
-      <span id="host">RemotePC Pro</span>
-      <span class="brand-badge">PRO FLEET</span>
+      <span>⚡</span>
+      <span id="host">Project-X-Nano</span>
+      <span class="brand-badge">NANO FLEET</span>
     </div>
     <div style="display:flex;align-items:center;gap:10px">
       <a href="/download/apk" class="btn" style="text-decoration:none;padding:5px 10px;font-size:12px;background:var(--srf2);color:var(--txt);border:1px solid var(--brd);border-radius:6px;display:inline-flex;align-items:center;gap:4px">
@@ -2156,11 +2162,11 @@ async function broadcastFleet(act){
 
 /* device discovery */
 async function discover(){
-  $('devList').innerHTML='<span style="color:var(--mut)">Scanning subnet for RemotePC nodes…</span>';
+  $('devList').innerHTML='<span style="color:var(--mut)">Scanning subnet for Project-X-Nano nodes…</span>';
   try{
     const d=await api('discover');
     if(!d.devices||!d.devices.length){
-      $('devList').innerHTML='<span style="color:var(--mut)">No other RemotePC nodes found on '+d.my_ip+' subnet.</span>';
+      $('devList').innerHTML='<span style="color:var(--mut)">No other Project-X-Nano nodes found on '+d.my_ip+' subnet.</span>';
       return;
     }
     $('devList').innerHTML=d.devices.map(dev=>`
@@ -2273,7 +2279,7 @@ except Exception:
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", CFG["port"]))
     host = os.environ.get("HOST", CFG["host"])
-    print("\n=== RemotePC running ===")
+    print("\n=== Project-X-Nano running ===")
     print(f"Open on your phone:  http://{lan_ip()}:{port}")
     if FIRST_PASSWORD:
         print(f"Your password (shown once, change by deleting config.json): {FIRST_PASSWORD}")

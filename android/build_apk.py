@@ -133,21 +133,23 @@ def main():
     ], "Zipalign APK")
 
     # 9. Sign APK with apksigner
-    final_apk = DIST_DIR / "RemotePC-Controller.apk"
+    final_apk = DIST_DIR / "Project-X-Nano.apk"
     if final_apk.exists():
         final_apk.unlink()
 
     sign_cmd = f'"{APKSIGNER}" sign --ks "{KEYSTORE}" --ks-pass pass:android --key-pass pass:android --ks-key-alias androiddebugkey --out "{final_apk}" "{aligned_apk}"'
     run(sign_cmd, "Signing APK with apksigner", is_batch=True)
 
-    # 10. Copy to root directory
+    # 10. Copy to root directory and keep backwards compatibility
     apk_size_mb = final_apk.stat().st_size / (1024 * 1024)
+    shutil.copy2(final_apk, ROOT_DIR / "Project-X-Nano.apk")
     shutil.copy2(final_apk, ROOT_DIR / "RemotePC-Controller.apk")
+    shutil.copy2(final_apk, DIST_DIR / "RemotePC-Controller.apk")
 
     print("=" * 60)
-    print("[SUCCESS] RemotePC Android Controller APK Built Successfully!")
+    print("[SUCCESS] Project-X-Nano Android Controller APK Built Successfully!")
     print(f"Output File: {final_apk}")
-    print(f"Root Copy:   {ROOT_DIR / 'RemotePC-Controller.apk'}")
+    print(f"Root Copy:   {ROOT_DIR / 'Project-X-Nano.apk'}")
     print(f"Size:        {apk_size_mb:.2f} MB")
     print("=" * 60)
 

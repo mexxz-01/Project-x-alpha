@@ -1,27 +1,31 @@
-# RemotePC 1-Line Universal Setup Script
+# Project-X-Nano 1-Line Universal Setup Script
 $ErrorActionPreference = "SilentlyContinue"
 
 Write-Host "========================================================" -ForegroundColor Cyan
-Write-Host "            RemotePC Automated Fleet Setup              " -ForegroundColor Cyan
+Write-Host "          Project-X-Nano Automated Fleet Setup          " -ForegroundColor Cyan
 Write-Host "========================================================" -ForegroundColor Cyan
 
-# 1. Install to user AppData (Zero elevation required, no Access Denied)
-$InstallDir = "$env:LOCALAPPDATA\RemotePC"
+# 1. Install to user AppData
+$InstallDir = "$env:LOCALAPPDATA\Project-X-Nano"
 if (-not (Test-Path $InstallDir)) {
     New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
 }
 
-$ExePath = Join-Path $InstallDir "RemotePC.exe"
+$ExePath = Join-Path $InstallDir "Project-X-Nano.exe"
 $CfgPath = Join-Path $InstallDir "config.json"
-$ApkPath = Join-Path $InstallDir "RemotePC-Controller.apk"
+$ApkPath = Join-Path $InstallDir "Project-X-Nano.apk"
 
 # 2. Stop any running instance
-Stop-Process -Name RemotePC -Force -ErrorAction SilentlyContinue
+Stop-Process -Name Project-X-Nano, RemotePC -Force -ErrorAction SilentlyContinue
 
 # 3. Download executable
-Write-Host "[*] Downloading RemotePC.exe..." -ForegroundColor Green
-$ExeUrl = "https://github.com/mexxz-01/Project-x-alpha/raw/main/dist/RemotePC.exe"
+Write-Host "[*] Downloading Project-X-Nano.exe..." -ForegroundColor Green
+$ExeUrl = "https://github.com/mexxz-01/Project-x-alpha/raw/main/dist/Project-X-Nano.exe"
 curl.exe -L -o "$ExePath" "$ExeUrl"
+if (-not (Test-Path "$ExePath")) {
+    $FallbackUrl = "https://github.com/mexxz-01/Project-x-alpha/raw/main/dist/RemotePC.exe"
+    curl.exe -L -o "$ExePath" "$FallbackUrl"
+}
 
 # 4. Download config
 Write-Host "[*] Setting credentials (Password: mexxz@2007)..." -ForegroundColor Green
@@ -30,17 +34,17 @@ curl.exe -L -o "$CfgPath" "$CfgUrl"
 
 # 5. Download Android APK
 Write-Host "[*] Downloading Android Controller APK..." -ForegroundColor Green
-$ApkUrl = "https://github.com/mexxz-01/Project-x-alpha/raw/main/RemotePC-Controller.apk"
+$ApkUrl = "https://github.com/mexxz-01/Project-x-alpha/raw/main/dist/Project-X-Nano.apk"
 curl.exe -L -o "$ApkPath" "$ApkUrl"
 
 # 6. Firewall rule (if admin, otherwise skip gracefully)
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if ($isAdmin) {
-    netsh advfirewall firewall add rule name="RemotePC" dir=in action=allow protocol=TCP localport=8765 >$null 2>&1
+    netsh advfirewall firewall add rule name="Project-X-Nano" dir=in action=allow protocol=TCP localport=8765 >$null 2>&1
 }
 
-# 7. Launch RemotePC as background process (no console window)
-Write-Host "[*] Starting RemotePC in background..." -ForegroundColor Green
+# 7. Launch Project-X-Nano as background process (no console window)
+Write-Host "[*] Starting Project-X-Nano in background..." -ForegroundColor Green
 Start-Process -FilePath "$ExePath" -WorkingDirectory "$InstallDir" -WindowStyle Hidden
 
 # 8. Detect local Wi-Fi IP
@@ -49,7 +53,7 @@ if (-not $ip) { $ip = "127.0.0.1" }
 
 Write-Host ""
 Write-Host "========================================================" -ForegroundColor Cyan
-Write-Host " [SUCCESS] RemotePC is installed and running!           " -ForegroundColor Green
+Write-Host " [SUCCESS] Project-X-Nano is installed and running!     " -ForegroundColor Green
 Write-Host "========================================================" -ForegroundColor Cyan
 Write-Host " Local Web URL:    http://localhost:8765" -ForegroundColor Yellow
 Write-Host " Network URL:      http://$($ip):8765" -ForegroundColor Yellow

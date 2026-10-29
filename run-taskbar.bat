@@ -1,4 +1,10 @@
 @echo off
-REM Launches RemotePC minimized on the Windows Taskbar as Administrator
+REM Launches Project-X-Nano as background process
 cd /d "%~dp0"
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process cmd.exe -ArgumentList '/c \"\"%~dp0run-as-admin.bat\"\"' -WindowStyle Hidden"
+if exist "%~dp0dist\Project-X-Nano.exe" (
+    start "Project-X-Nano" "%~dp0dist\Project-X-Nano.exe"
+) else if exist "%~dp0dist\RemotePC.exe" (
+    start "Project-X-Nano" "%~dp0dist\RemotePC.exe"
+) else (
+    start "Project-X-Nano" python server.py
+)

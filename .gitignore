@@ -9,6 +9,7 @@ build/
 
 # Android build cache
 android/bin/
+android/debug.keystore
 *.idsig
 
 

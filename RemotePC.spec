@@ -28,7 +28,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='RemotePC',
+    name='Project-X-Nano',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

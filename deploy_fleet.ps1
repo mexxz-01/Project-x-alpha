@@ -20,6 +20,17 @@ if ($Targets.Count -eq 0) {
 }
 
 Write-Host "[*] Target PCs: $($Targets -join ', ')" -ForegroundColor Green
+
+# Ensure local WinRM service is running
+try {
+    $winrmSvc = Get-Service WinRM -ErrorAction SilentlyContinue
+    if ($winrmSvc -and $winrmSvc.Status -ne "Running") {
+        Write-Host "[*] Starting local WinRM service..." -ForegroundColor Yellow
+        Start-Service WinRM -ErrorAction SilentlyContinue
+    }
+    Set-Item WSMan:\localhost\Client\TrustedHosts -Value "*" -Force -ErrorAction SilentlyContinue
+} catch {}
+
 Write-Host "[*] Prompting for administrator credentials..." -ForegroundColor Yellow
 $cred = Get-Credential
 

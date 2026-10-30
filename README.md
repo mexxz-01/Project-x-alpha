@@ -39,8 +39,9 @@ Deploy Project-X-Nano across all computers on your local network without manuall
 
 PowerShell Remoting allows native push execution across multiple Windows PCs in parallel using built-in Windows Remote Management.
 
-1. **(One-Time Setup on Main PC)**: If managing Workgroup or Home LAN PCs, allow TrustedHosts in PowerShell (Run as Administrator):
+1. **(One-Time Setup on Main PC)**: Start the WinRM service and allow TrustedHosts in PowerShell (Run as Administrator):
    ```powershell
+   Start-Service WinRM
    Set-Item WSMan:\localhost\Client\TrustedHosts -Value "*" -Force
    ```
 

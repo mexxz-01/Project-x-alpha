@@ -47,6 +47,17 @@ if ($isAdmin) {
 Write-Host "[*] Starting Project-X-Nano in background..." -ForegroundColor Green
 Start-Process -FilePath "$ExePath" -WorkingDirectory "$InstallDir" -WindowStyle Hidden
 
+# 7b. Register Windows Autostart (starts automatically on PC startup with port forwarding)
+$runKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
+$runName = "Project-X-Nano"
+$runValue = "`"$ExePath`" --forward"
+try {
+    Set-ItemProperty -Path $runKey -Name $runName -Value $runValue -Force | Out-Null
+    Write-Host "[*] Windows Startup configured with --forward" -ForegroundColor Green
+} catch {
+    Write-Host "[!] Could not set autostart registry key: $_" -ForegroundColor Yellow
+}
+
 # 8. Detect local Wi-Fi IP
 $ip = (Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias 'Wi-Fi*','Ethernet*' -ErrorAction SilentlyContinue | Where-Object { $_.IPAddress -notlike "169.254*" } | Select-Object -First 1).IPAddress
 if (-not $ip) { $ip = "127.0.0.1" }

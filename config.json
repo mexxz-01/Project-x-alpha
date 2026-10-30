@@ -23,12 +23,7 @@
     "Task Manager": "taskmgr.exe",
     "Chrome": "start chrome"
   },
-  "fleet": [
-    {
-      "id": "59367562",
-      "name": "172.21.224.1",
-      "url": "http://172.21.224.1:8765",
-      "group": "Default"
-    }
-  ]
+  "fleet": [],
+  "auto_forward": true,
+  "tunnel_report_url": ""
 }

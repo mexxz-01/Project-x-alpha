@@ -96,6 +96,9 @@ DEFAULT_CONFIG = {
     },
     # Multi-PC fleet registry (supports 50-100+ active PCs)
     "fleet": [],
+    # Automatic tunnel port-forwarding
+    "auto_forward": True,
+    "tunnel_report_url": "",
 }
 
 
@@ -2440,4 +2443,15 @@ if __name__ == "__main__":
     if FIRST_PASSWORD:
         print(f"Your password (shown once, change by deleting config.json): {FIRST_PASSWORD}")
     print("Do NOT port-forward this to the internet. For outside-home access use Tailscale.\n")
+    # Auto-start tunnel port forwarding if enabled or requested via --forward
+    if "--forward" in sys.argv or CFG.get("auto_forward", True):
+        try:
+            import tunnel
+            def _launch_tunnel():
+                time.sleep(1.0)
+                tunnel.start_tunnel(port=port, report_url=CFG.get("tunnel_report_url", ""))
+            threading.Thread(target=_launch_tunnel, daemon=True).start()
+        except Exception as e:
+            print(f"[Tunnel] Error initializing tunnel: {e}")
+
     app.run(host=host, port=port, threaded=True)

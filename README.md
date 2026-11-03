@@ -118,7 +118,12 @@ Control your PC directly from your phone with the dedicated Android app:
 | **🎚️ Hardware Controls** | Smooth volume sliders, DDC/CI monitor brightness, and full media keys. |
 | **📁 Multi-Drive Explorer** | Browse `C:\`, `D:\`, USB drives, download files, and upload files remotely. |
 | **⚡ Live Process Manager** | Full task manager in your browser. Real-time CPU % & Memory MB meters, filter by name/PID, 1-click **End Task**, **Suspend/Pause**, and **Resume**. |
+| **🌐 Network Ports Explorer** | Scan all active listening TCP/UDP sockets, mapped to process names and PIDs. 1-click **Free Port** button to resolve dev port conflicts. |
+| **⚙️ Windows Services Hub** | Start, stop, and restart background Windows services and developer daemons directly from mobile or desktop. |
+| **📋 Bi-Directional Clipboard** | Instant copy/paste bridge between your phone/laptop and the remote PC clipboard. |
+| **🔥 Per-Core CPU Telemetry** | Real-time visual load bars across every logical CPU core with live frequency meters. |
 | **🛡️ Fake Windows Update Screen** | 1-click remote guest deterrent. Launches an authentic animated full-screen Windows Update loading screen on the PC. Host keyboard bypass: `mexxz`. |
+| **⚡ Matrix Stealth Lock** | Pitch-black screen with animated emerald green digital rain Matrix theme and glowing *PROJECT X* typography. |
 | **⏻ Power & Sleep** | Shut down, restart, lock, sleep, hibernate, abort pending shutdowns, and sleep timers. |
 | **🗑️ Remote Clean Uninstall** | 1-click remote uninstaller cleans autostart registry, drops scheduled tasks, terminates process, and purges all installation files/folders. |
 | **🛡️ Silent Background Process** | Zero black console window; runs cleanly in Windows Task Manager under Background Processes. |

@@ -7,10 +7,13 @@ import urllib.request
 import subprocess
 import threading
 import atexit
+import platform
 from pathlib import Path
 
 BASE = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).parent
 CLOUDFLARED_EXE = BASE / "cloudflared.exe"
+PUBLIC_URL_FILE = BASE / "public_url.txt"
+CONFIG_FILE = BASE / "config.json"
 CLOUDFLARED_URL = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe"
 
 _tunnel_process = None
@@ -18,6 +21,11 @@ _public_url = None
 
 def get_public_url():
     global _public_url
+    if not _public_url and PUBLIC_URL_FILE.exists():
+        try:
+            _public_url = PUBLIC_URL_FILE.read_text().strip()
+        except Exception:
+            pass
     return _public_url
 
 def ensure_tunnel_binary():
@@ -79,7 +87,7 @@ def start_tunnel(port: int = 8765, report_url: str = "") -> str:
     # Read output to capture the trycloudflare.com URL
     url = None
     start_time = time.time()
-    while time.time() - start_time < 25:
+    while time.time() - start_time < 30:
         line = _tunnel_process.stderr.readline()
         if not line:
             time.sleep(0.1)
@@ -91,34 +99,70 @@ def start_tunnel(port: int = 8765, report_url: str = "") -> str:
 
     if url:
         _public_url = url
-        print(f"[Tunnel] Public tunnel URL ready: {url}")
+        print(f"[Tunnel] ========================================================")
+        print(f"[Tunnel] >> PUBLIC REMOTE URL: {url}")
+        print(f"[Tunnel] ========================================================")
+        
+        # 1. Save locally for other scripts
+        try:
+            PUBLIC_URL_FILE.write_text(url, encoding="utf-8")
+        except Exception:
+            pass
+
+        # 2. Update config.json with current url
+        if CONFIG_FILE.exists():
+            try:
+                cfg = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+                cfg["last_public_url"] = url
+                if not report_url and cfg.get("tunnel_report_url"):
+                    report_url = cfg.get("tunnel_report_url")
+                CONFIG_FILE.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+            except Exception:
+                pass
+
+        # 3. Report to target server/webhook
         if report_url:
             report_public_url(url, report_url)
+
         return url
     else:
         print("[Tunnel] Could not capture tunnel URL within timeout.")
         return ""
 
 def report_public_url(url: str, report_url: str):
-    """POST public tunnel link to remote central server/webhook."""
+    """Upload/POST public tunnel link to user's remote server, Discord, Telegram, or webhook."""
     if not report_url or not url:
         return
 
     def _post():
-        try:
-            payload = json.dumps({
+        host_name = platform.node()
+        # Format payload intelligently depending on webhook destination
+        if "discord.com" in report_url:
+            payload_data = {
+                "content": f"⚡ **Project-X-Nano Host Online!**\n💻 Host PC: `{host_name}`\n🔗 Remote URL: {url}\n📱 Mobile Dashboard: {url}"
+            }
+        else:
+            payload_data = {
                 "app": "Project-X-Nano",
+                "host": host_name,
                 "public_url": url,
+                "content": f"Project-X-Nano Online: {url}",
                 "timestamp": time.time()
-            }).encode("utf-8")
+            }
+
+        try:
+            payload = json.dumps(payload_data).encode("utf-8")
             req = urllib.request.Request(
                 report_url,
                 data=payload,
-                headers={"Content-Type": "application/json", "User-Agent": "Project-X-Nano-Tunnel"}
+                headers={
+                    "Content-Type": "application/json",
+                    "User-Agent": "Project-X-Nano-Tunnel/2.0"
+                }
             )
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                print(f"[Tunnel] Public URL successfully reported to: {report_url}")
+            with urllib.request.urlopen(req, timeout=12) as resp:
+                print(f"[Tunnel] Public URL successfully uploaded to server: {report_url}")
         except Exception as e:
-            print(f"[Tunnel] Failed to report URL to {report_url}: {e}")
+            print(f"[Tunnel] Note: Failed to upload URL to {report_url}: {e}")
 
     threading.Thread(target=_post, daemon=True).start()

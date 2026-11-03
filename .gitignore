@@ -16,3 +16,10 @@ android/debug.keystore
 # OS
 .DS_Store
 Thumbs.db
+
+# Binaries & Ephemeral Runtime
+cloudflared.exe
+dist/cloudflared.exe
+public_url.txt
+uninstalling.lock
+

@@ -8,6 +8,7 @@ pip install -r requirements.txt pyinstaller
 pyinstaller --onefile --name RemotePC %UAC% ^
   --collect-submodules pycaw --collect-submodules comtypes ^
   --collect-submodules screen_brightness_control ^
+  --collect-submodules core ^
   server.py
 echo.
 echo Done! Your program is dist\RemotePC.exe  (double-click it to start)

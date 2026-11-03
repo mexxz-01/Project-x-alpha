@@ -2,6 +2,7 @@
 from PyInstaller.utils.hooks import collect_submodules
 
 hiddenimports = []
+hiddenimports += collect_submodules('core')
 hiddenimports += collect_submodules('pycaw')
 hiddenimports += collect_submodules('comtypes')
 hiddenimports += collect_submodules('screen_brightness_control')

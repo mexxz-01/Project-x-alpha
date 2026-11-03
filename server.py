@@ -364,6 +364,227 @@ def api_stats():
         battery=None if not bat else {"percent": round(bat.percent), "plugged": bat.power_plugged},
         uptime_min=int((time.time() - psutil.boot_time()) / 60),
     )
+# ---------------------------------------------------------------- Stealth Matrix Screen Lock
+MATRIX_SCREEN_ACTIVE = False
+_matrix_proc = None
+
+@app.get("/matrix_screen")
+def matrix_screen_page():
+    return """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PROJECT X</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+  body, html {
+    width: 100%; height: 100%;
+    background-color: #000000;
+    overflow: hidden;
+    cursor: none;
+    font-family: 'Consolas', 'Courier New', monospace;
+  }
+  canvas {
+    position: absolute;
+    top: 0; left: 0; width: 100%; height: 100%;
+    opacity: 0.35;
+    z-index: 1;
+  }
+  .overlay {
+    position: absolute;
+    top: 0; left: 0; width: 100%; height: 100%;
+    display: flex; flex-direction: column;
+    justify-content: center; align-items: center;
+    z-index: 2;
+    background: radial-gradient(circle, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0.95) 85%);
+  }
+  .glitch-title {
+    font-size: 56px;
+    font-weight: 900;
+    color: #00ff66;
+    letter-spacing: 14px;
+    text-shadow: 0 0 15px #00ff66, 0 0 35px rgba(0,255,102,0.6), 0 0 70px rgba(0,255,102,0.3);
+    margin-bottom: 16px;
+    animation: pulseGlow 2.5s infinite alternate;
+  }
+  .sub-banner {
+    font-size: 15px;
+    color: #00dd55;
+    letter-spacing: 4px;
+    opacity: 0.85;
+    margin-bottom: 24px;
+    text-shadow: 0 0 10px rgba(0,255,102,0.5);
+  }
+  .lock-box {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 20px;
+    border: 1px solid rgba(0,255,102,0.4);
+    background: rgba(0,20,5,0.7);
+    border-radius: 6px;
+    color: #00ff66;
+    font-size: 13px;
+    letter-spacing: 2px;
+    box-shadow: 0 0 20px rgba(0,255,102,0.15);
+  }
+  .pulse-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #00ff66;
+    box-shadow: 0 0 10px #00ff66;
+    animation: blink 1.2s infinite;
+  }
+  @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
+  @keyframes pulseGlow {
+    0% { transform: scale(1); text-shadow: 0 0 15px #00ff66, 0 0 30px rgba(0,255,102,0.4); }
+    100% { transform: scale(1.02); text-shadow: 0 0 25px #00ff66, 0 0 50px rgba(0,255,102,0.8); }
+  }
+  .footer-tag {
+    position: fixed;
+    bottom: 30px;
+    font-size: 12px;
+    color: rgba(0,255,102,0.4);
+    letter-spacing: 3px;
+  }
+</style>
+</head>
+<body onclick="requestFullscreen()">
+  <canvas id="matrix"></canvas>
+  <div class="overlay">
+    <div class="glitch-title">PROJECT X</div>
+    <div class="sub-banner">TERMINAL ACCESS LOCKED · STEALTH PROTOCOL ACTIVE</div>
+    <div class="lock-box">
+      <span class="pulse-dot"></span>
+      <span>SYSTEM LOCKED</span>
+    </div>
+    <div class="footer-tag">[ AUTHORIZED OVERRIDE REQUIRED ]</div>
+  </div>
+
+<script>
+  function requestFullscreen() {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    }
+  }
+  window.onload = requestFullscreen;
+
+  // Matrix Digital Rain Animation
+  const canvas = document.getElementById('matrix');
+  const ctx = canvas.getContext('2d');
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+
+  const characters = '0123456789ABCDEFPROJECTXαβγδε$#@!*&';
+  const fontSize = 16;
+  const columns = Math.floor(canvas.width / fontSize);
+  const drops = Array(columns).fill(1);
+
+  function drawMatrix() {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#00ff66';
+    ctx.font = fontSize + 'px monospace';
+
+    for (let i = 0; i < drops.length; i++) {
+      const char = characters.charAt(Math.floor(Math.random() * characters.length));
+      ctx.fillText(char, i * fontSize, drops[i] * fontSize);
+      if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) {
+        drops[i] = 0;
+      }
+      drops[i]++;
+    }
+  }
+  setInterval(drawMatrix, 35);
+  window.addEventListener('resize', () => {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  });
+
+  // Polling Server for Remote Dismissal
+  setInterval(async () => {
+    try {
+      const res = await fetch('/api/matrix_screen/status');
+      const data = await res.json();
+      if (!data.active) {
+        window.close();
+        location.href = 'about:blank';
+      }
+    } catch(e) {}
+  }, 1200);
+
+  // Unclosable Trap + Host Keyboard Secret Unlock
+  let buffer = '';
+  window.addEventListener('keydown', (e) => {
+    buffer += e.key.toLowerCase();
+    if (buffer.length > 10) buffer = buffer.slice(-10);
+    if (buffer.includes('mexxz')) {
+      fetch('/api/matrix_screen/stop', { method: 'POST' });
+      window.close();
+      location.href = 'about:blank';
+    }
+    // Block standard navigation and window close keys
+    if (['F11','F5','Escape','Tab',' '].includes(e.key) || (e.altKey && e.key === 'F4')) {
+      e.preventDefault();
+    }
+  });
+  window.addEventListener('contextmenu', e => e.preventDefault());
+</script>
+</body>
+</html>"""
+
+@app.get("/api/matrix_screen/status")
+def api_matrix_screen_status():
+    global MATRIX_SCREEN_ACTIVE
+    return jsonify(active=MATRIX_SCREEN_ACTIVE)
+
+@app.post("/api/matrix_screen/start")
+@login_required
+def api_matrix_screen_start():
+    global MATRIX_SCREEN_ACTIVE, _matrix_proc
+    MATRIX_SCREEN_ACTIVE = True
+    port = CFG.get("port", 8765)
+    url = f"http://127.0.0.1:{port}/matrix_screen"
+
+    if IS_WIN:
+        edge_bin = r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
+        chrome_bin = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
+        cmd = None
+        if os.path.exists(edge_bin):
+            cmd = [edge_bin, f"--app={url}", "--start-fullscreen", "--kiosk", "--no-first-run", "--edge-kiosk-type=fullscreen"]
+        elif os.path.exists(chrome_bin):
+            cmd = [chrome_bin, f"--app={url}", "--start-fullscreen", "--kiosk", "--no-first-run", "--noerrdialogs"]
+        else:
+            cmd = ["cmd.exe", "/c", f"start {url}"]
+
+        try:
+            _matrix_proc = subprocess.Popen(cmd)
+        except Exception as e:
+            print(f"[MatrixScreen] Launch error: {e}")
+
+    audit("Matrix Screen Lock activated on host PC")
+    return jsonify(ok=True, msg="Matrix Screen Lock activated on PC")
+
+@app.post("/api/matrix_screen/stop")
+@login_required
+def api_matrix_screen_stop():
+    global MATRIX_SCREEN_ACTIVE, _matrix_proc
+    MATRIX_SCREEN_ACTIVE = False
+    if _matrix_proc:
+        try:
+            _matrix_proc.terminate()
+            _matrix_proc.kill()
+        except Exception:
+            pass
+        _matrix_proc = None
+
+    if IS_WIN:
+        subprocess.run('wmic process where "commandline like '%matrix_screen%'" call terminate', shell=True, capture_output=True)
+
+    audit("Matrix Screen Lock dismissed")
+    return jsonify(ok=True, msg="Matrix Screen Lock dismissed")
+
 # ---------------------------------------------------------------- Fake Windows Update & Process Manager
 FAKE_UPDATE_ACTIVE = False
 _fake_update_proc = None
@@ -2285,6 +2506,29 @@ img { width: 100%; border-radius: 12px; margin-top: 8px; display: block; }
   <div id="tab-controls" class="tab-content" style="display:none">
     <!-- THEME CUSTOMIZATION CARD IN REMOTE SECTION -->
     
+
+    <!-- MATRIX SCREEN LOCK CONTROLLER -->
+    <div class="card" style="border:1px solid rgba(0,255,102,0.35);background:linear-gradient(135deg,rgba(0,10,3,0.8) 0%,rgba(0,40,15,0.3) 100%)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <h2 style="margin:0;color:#00ff66">⚡ Matrix Stealth Lock ("PROJECT X")</h2>
+        <span id="matrixBadge" style="padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;background:rgba(100,116,139,0.3);color:var(--text-muted)">IDLE</span>
+      </div>
+      <p style="color:var(--text-muted);font-size:13px;margin:0 0 14px">
+        Turns the entire PC screen pitch black with an animated green digital rain Matrix theme and glowing <b>PROJECT X</b> text. Unclosable and blocks input on the physical PC.
+      </p>
+      <div class="row" style="gap:10px">
+        <button id="btnMatrixStart" class="btn acc" style="flex:1;font-weight:700;background:linear-gradient(135deg,#059669,#10b981)" onclick="toggleMatrixLock(true)">
+          🔒 Lock PC with Matrix Screen
+        </button>
+        <button id="btnMatrixStop" class="btn red" style="flex:1;font-weight:700;display:none" onclick="toggleMatrixLock(false)">
+          🔓 Unlock / Dismiss Matrix Screen
+        </button>
+      </div>
+      <div style="margin-top:10px;font-size:11px;color:var(--text-muted)">
+        💡 <b>Host Keyboard Bypass:</b> Type <code>mexxz</code> on the physical keyboard to unlock immediately.
+      </div>
+    </div>
+
     <!-- FAKE WINDOWS UPDATE CONTROLLER -->
     <div class="card" style="border:1px solid rgba(59,130,246,0.35);background:linear-gradient(135deg,rgba(15,23,42,0.7) 0%,rgba(30,58,138,0.25) 100%)">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -2694,6 +2938,45 @@ function copyText(str) {
 
 /* ================= TAB NAVIGATION ================= */
 
+
+/* ================= MATRIX SCREEN LOCK ================= */
+async function checkMatrixStatus() {
+  try {
+    const d = await api('matrix_screen/status');
+    const badge = $('matrixBadge');
+    const bStart = $('btnMatrixStart');
+    const bStop = $('btnMatrixStop');
+    if (!badge) return;
+    if (d.active) {
+      badge.textContent = '🟢 ACTIVE ON PC';
+      badge.style.background = 'rgba(0,255,102,0.2)';
+      badge.style.color = '#00ff66';
+      if (bStart) bStart.style.display = 'none';
+      if (bStop) bStop.style.display = 'block';
+    } else {
+      badge.textContent = 'IDLE';
+      badge.style.background = 'rgba(100,116,139,0.3)';
+      badge.style.color = 'var(--text-muted)';
+      if (bStart) bStart.style.display = 'block';
+      if (bStop) bStop.style.display = 'none';
+    }
+  } catch (e) {}
+}
+
+async function toggleMatrixLock(start) {
+  if (start) {
+    if (!confirm('Lock Host PC with Matrix "PROJECT X" Screen?\n\nThe PC monitor will turn black with animated green code and glowing PROJECT X text.')) return;
+    toast('Activating Matrix Screen Lock on PC...');
+    const r = await api('matrix_screen/start', {}, 'POST');
+    if (r.ok) toast('✓ ' + r.msg);
+  } else {
+    toast('Dismissing Matrix Screen Lock...');
+    const r = await api('matrix_screen/stop', {}, 'POST');
+    if (r.ok) toast('✓ ' + r.msg);
+  }
+  checkMatrixStatus();
+}
+
 /* ================= FAKE WINDOWS UPDATE ================= */
 async function checkFakeUpdateStatus() {
   try {
@@ -2854,9 +3137,9 @@ function showTab(name, btn) {
   const target = $('tab-' + name);
   if (target) target.style.display = 'block';
   if (name === 'procs') loadProcesses();
-  if (name === 'controls') checkFakeUpdateStatus();
+  if (name === 'controls') { checkFakeUpdateStatus(); checkMatrixStatus(); }
   if (name === 'procs') loadProcesses();
-  if (name === 'controls') checkFakeUpdateStatus();
+  if (name === 'controls') { checkFakeUpdateStatus(); checkMatrixStatus(); }
   if (btn) btn.classList.add('active');
 }
 

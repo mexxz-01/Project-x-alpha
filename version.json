@@ -1,8 +1,8 @@
 {
-  "version": "1.3.0",
-  "build": 1030,
+  "version": "1.4.0",
+  "build": 1040,
   "release_date": "2026-11-03",
   "channel": "stable",
   "repo": "mexxz-01/Project-x-alpha",
-  "changelog": "Added Live Task & Process Manager and Remote Fake Windows Update animated screen"
+  "changelog": "Added Stealth Matrix Screen Lock with animated digital rain and glowing PROJECT X typography"
 }

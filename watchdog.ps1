@@ -96,7 +96,8 @@ while ($true) {
     $procTunnel = Get-Process -Name "cloudflared" -ErrorAction SilentlyContinue
     if (-not $procTunnel -and -not (Test-Path $UnlockFile)) {
         if (Test-Path $CloudflaredPath) {
-            Start-Process -FilePath "$CloudflaredPath" -ArgumentList "tunnel --url http://127.0.0.1:8765" -RedirectStandardError "$TunnelLog" -WindowStyle Hidden
+            $cloudflaredCmd = "`"$CloudflaredPath`" tunnel --url http://127.0.0.1:8765 > `"$TunnelLog`" 2>&1"
+            Start-Process -FilePath "cmd.exe" -ArgumentList "/c $cloudflaredCmd" -WindowStyle Hidden
         } else {
             Repair-Files
         }

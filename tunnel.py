@@ -66,7 +66,7 @@ def start_tunnel(port: int = 8765, report_url: str = "") -> str:
             cmd,
             creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True,
             bufsize=1
         )
@@ -84,11 +84,11 @@ def start_tunnel(port: int = 8765, report_url: str = "") -> str:
             _tunnel_process = None
     atexit.register(cleanup)
 
-    # Read output to capture the trycloudflare.com URL
+    # Read combined output to capture the trycloudflare.com URL
     url = None
     start_time = time.time()
-    while time.time() - start_time < 30:
-        line = _tunnel_process.stderr.readline()
+    while time.time() - start_time < 45:
+        line = _tunnel_process.stdout.readline()
         if not line:
             time.sleep(0.1)
             continue

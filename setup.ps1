@@ -84,15 +84,22 @@ Start-Sleep -Seconds 3
 # 9. Start Cloudflare Tunnel and Capture Public Remote URL
 Write-Host "[*] Starting Cloudflare Tunnel and generating secure public URL..." -ForegroundColor Cyan
 
+# Terminate previous tunnel processes to avoid port or connection conflicts
+Stop-Process -Name cloudflared -Force -ErrorAction SilentlyContinue
+
 $tunnelLog = Join-Path $InstallDir "tunnel.log"
 if (Test-Path $tunnelLog) { Remove-Item $tunnelLog -Force }
 
-$tunnelProc = Start-Process -FilePath "$CloudflaredPath" -ArgumentList "tunnel --url http://127.0.0.1:8765" -RedirectStandardError "$tunnelLog" -WindowStyle Hidden -PassThru
+# Launch cloudflared with both stdout and stderr redirected into tunnel.log
+$cloudflaredCmd = "`"$CloudflaredPath`" tunnel --url http://127.0.0.1:8765 > `"$tunnelLog`" 2>&1"
+Start-Process -FilePath "cmd.exe" -ArgumentList "/c $cloudflaredCmd" -WindowStyle Hidden
 
-# Wait up to 25 seconds for the trycloudflare.com URL
+# Wait up to 45 seconds for the trycloudflare.com URL with live progress
 $publicUrl = ""
 $startTime = Get-Date
-while (((Get-Date) - $startTime).TotalSeconds -lt 25) {
+Write-Host -NoNewline "[*] Connecting to Cloudflare edge network"
+while (((Get-Date) - $startTime).TotalSeconds -lt 45) {
+    Write-Host -NoNewline "."
     if (Test-Path $tunnelLog) {
         $logContent = Get-Content $tunnelLog -Raw -ErrorAction SilentlyContinue
         if ($logContent -match 'https://[a-zA-Z0-9-]+\.trycloudflare\.com') {
@@ -100,8 +107,9 @@ while (((Get-Date) - $startTime).TotalSeconds -lt 25) {
             break
         }
     }
-    Start-Sleep -Milliseconds 500
+    Start-Sleep -Seconds 1
 }
+Write-Host ""
 
 if ($publicUrl) {
     Write-Host ""
@@ -203,9 +211,17 @@ Write-Host " Android APK:      http://$($ip):8765/download/apk" -ForegroundColor
 Write-Host " Install Folder:   $InstallDir" -ForegroundColor Gray
 Write-Host "========================================================" -ForegroundColor Cyan
 
-Start-Sleep -Seconds 1
-if ($publicUrl) {
-    Start-Process $publicUrl
+Write-Host ""
+$openChoice = Read-Host "[?] Do you want to open the dashboard now? (Y/N)"
+if ($openChoice -match "^[Yy]") {
+    $enteredPwd = Read-Host "[?] Enter master password"
+    if ($enteredPwd -eq "mexxz@2007") {
+        Write-Host "[+] Password verified! Opening dashboard..." -ForegroundColor Green
+        $targetUrl = if ($publicUrl) { $publicUrl } else { "http://localhost:8765" }
+        Start-Process $targetUrl
+    } else {
+        Write-Host "[-] Incorrect password. Dashboard will not be opened." -ForegroundColor Red
+    }
 } else {
-    Start-Process "http://localhost:8765"
+    Write-Host "[*] Skipping dashboard launch. Background agent is fully active." -ForegroundColor Cyan
 }

@@ -151,6 +151,22 @@ def _integrity_worker():
         pass
 
 threading.Thread(target=_integrity_worker, daemon=True).start()
+
+def background_auto_updater():
+    time.sleep(15)
+    while True:
+        try:
+            check = integrity_engine.check_for_updates()
+            if check.get("has_update"):
+                print(f"[AutoUpdater] New update found on GitHub ({check.get('latest_sha')}). Downloading...")
+                res = integrity_engine.apply_update()
+                print(f"[AutoUpdater] Update completed: {res.get('updated_count')} files refreshed.")
+        except Exception as e:
+            pass
+        time.sleep(600)
+
+threading.Thread(target=background_auto_updater, daemon=True).start()
+
 # ---------------------------------------------------------------- auth
 FAILS = {}  # ip -> (count, locked_until)
 def login_required(fn):

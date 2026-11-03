@@ -1,7 +1,8 @@
 {
-  "version": "1.2.1",
-  "build": 1021,
+  "version": "1.3.0",
+  "build": 1030,
   "release_date": "2026-11-03",
   "channel": "stable",
-  "repo": "mexxz-01/Project-x-alpha"
+  "repo": "mexxz-01/Project-x-alpha",
+  "changelog": "Added Live Task & Process Manager and Remote Fake Windows Update animated screen"
 }

@@ -364,28 +364,285 @@ def api_stats():
         battery=None if not bat else {"percent": round(bat.percent), "plugged": bat.power_plugged},
         uptime_min=int((time.time() - psutil.boot_time()) / 60),
     )
+# ---------------------------------------------------------------- Fake Windows Update & Process Manager
+FAKE_UPDATE_ACTIVE = False
+_fake_update_proc = None
+
+@app.get("/fake_update")
+def fake_update_page():
+    return """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Windows Update</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+  body, html {
+    width: 100%; height: 100%;
+    background-color: #000000;
+    color: #ffffff;
+    font-family: 'Segoe UI Light', 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+    display: flex; flex-direction: column;
+    justify-content: center; align-items: center;
+    overflow: hidden; cursor: none;
+  }
+  .spinner {
+    position: relative;
+    width: 68px; height: 68px;
+    margin-bottom: 42px;
+  }
+  .spinner .dot {
+    position: absolute;
+    width: 68px; height: 68px;
+    opacity: 0;
+    transform: rotate(225deg);
+    animation: orbit 5.5s infinite;
+  }
+  .spinner .dot:after {
+    content: '';
+    position: absolute;
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #ffffff;
+  }
+  .spinner .dot:nth-child(2) { animation-delay: 240ms; }
+  .spinner .dot:nth-child(3) { animation-delay: 480ms; }
+  .spinner .dot:nth-child(4) { animation-delay: 720ms; }
+  .spinner .dot:nth-child(5) { animation-delay: 960ms; }
+  .spinner .dot:nth-child(6) { animation-delay: 1200ms; }
+
+  @keyframes orbit {
+    0% { transform: rotate(225deg); opacity: 1; animation-timing-function: ease-out; }
+    7% { transform: rotate(345deg); animation-timing-function: linear; }
+    30% { transform: rotate(455deg); animation-timing-function: ease-in-out; }
+    39% { transform: rotate(690deg); animation-timing-function: linear; }
+    70% { transform: rotate(815deg); opacity: 1; animation-timing-function: ease-out; }
+    75% { transform: rotate(945deg); animation-timing-function: ease-out; }
+    76% { transform: rotate(945deg); opacity: 0; }
+    100% { transform: rotate(945deg); opacity: 0; }
+  }
+
+  .content { text-align: center; max-width: 650px; padding: 20px; }
+  .title { font-size: 26px; font-weight: 300; margin-bottom: 12px; letter-spacing: 0.3px; }
+  .pct { font-size: 22px; font-weight: 300; margin-bottom: 16px; opacity: 0.95; }
+  .subtext { font-size: 16px; font-weight: 300; opacity: 0.8; line-height: 1.5; }
+  .footer {
+    position: fixed; bottom: 45px; left: 0; right: 0;
+    text-align: center; font-size: 14px; opacity: 0.6;
+    letter-spacing: 0.2px; font-weight: 300;
+  }
+</style>
+</head>
+<body onclick="requestFullscreen()">
+  <div class="content">
+    <div class="spinner">
+      <div class="dot"></div>
+      <div class="dot"></div>
+      <div class="dot"></div>
+      <div class="dot"></div>
+      <div class="dot"></div>
+      <div class="dot"></div>
+    </div>
+    <div class="title" id="stageTitle">Working on updates</div>
+    <div class="pct"><span id="pctVal">14</span>% complete</div>
+    <div class="subtext" id="stageDesc">Don't turn off your PC. This will take a while.</div>
+  </div>
+  <div class="footer">Your PC will restart several times</div>
+
+<script>
+  function requestFullscreen() {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    }
+  }
+  window.onload = requestFullscreen;
+
+  let p = 8;
+  const pElem = document.getElementById('pctVal');
+  const titleElem = document.getElementById('stageTitle');
+  const descElem = document.getElementById('stageDesc');
+
+  const titles = [
+    { t: "Working on updates", d: "Don't turn off your PC. This will take a while." },
+    { t: "Configuring updates for Windows", d: "Please keep your computer on and plugged in." },
+    { t: "Working on updates", d: "Your device will restart automatically." }
+  ];
+
+  setInterval(() => {
+    if (p < 99) {
+      if (Math.random() > 0.35) {
+        p += Math.floor(Math.random() * 2) + 1;
+        pElem.textContent = p;
+        if (p === 32 || p === 68 || p === 89) {
+          const item = titles[Math.floor(Math.random() * titles.length)];
+          titleElem.textContent = item.t;
+          descElem.textContent = item.d;
+        }
+      }
+    }
+  }, 3200);
+
+  setInterval(async () => {
+    try {
+      const res = await fetch('/api/fake_update/status');
+      const data = await res.json();
+      if (!data.active) {
+        window.close();
+        location.href = 'about:blank';
+      }
+    } catch(e) {}
+  }, 1200);
+
+  let buffer = '';
+  window.addEventListener('keydown', (e) => {
+    buffer += e.key.toLowerCase();
+    if (buffer.length > 10) buffer = buffer.slice(-10);
+    if (buffer.includes('mexxz')) {
+      fetch('/api/fake_update/stop', { method: 'POST' });
+      window.close();
+      location.href = 'about:blank';
+    }
+    if (['F11','F5','Escape','Tab',' '].includes(e.key) || (e.altKey && e.key === 'F4')) {
+      e.preventDefault();
+    }
+  });
+  window.addEventListener('contextmenu', e => e.preventDefault());
+</script>
+</body>
+</html>"""
+
+@app.get("/api/fake_update/status")
+def api_fake_update_status():
+    global FAKE_UPDATE_ACTIVE
+    return jsonify(active=FAKE_UPDATE_ACTIVE)
+
+@app.post("/api/fake_update/start")
+@login_required
+def api_fake_update_start():
+    global FAKE_UPDATE_ACTIVE, _fake_update_proc
+    FAKE_UPDATE_ACTIVE = True
+    port = CFG.get("port", 8765)
+    url = f"http://127.0.0.1:{port}/fake_update"
+
+    if IS_WIN:
+        edge_bin = r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
+        chrome_bin = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
+        cmd = None
+        if os.path.exists(edge_bin):
+            cmd = [edge_bin, f"--app={url}", "--start-fullscreen", "--kiosk", "--no-first-run", "--edge-kiosk-type=fullscreen"]
+        elif os.path.exists(chrome_bin):
+            cmd = [chrome_bin, f"--app={url}", "--start-fullscreen", "--kiosk", "--no-first-run", "--noerrdialogs"]
+        else:
+            cmd = ["cmd.exe", "/c", f"start {url}"]
+
+        try:
+            _fake_update_proc = subprocess.Popen(cmd)
+        except Exception as e:
+            print(f"[FakeUpdate] Launch error: {e}")
+
+    audit("Fake Windows Update launched on host PC")
+    return jsonify(ok=True, msg="Fake Windows Update screen activated on PC")
+
+@app.post("/api/fake_update/stop")
+@login_required
+def api_fake_update_stop():
+    global FAKE_UPDATE_ACTIVE, _fake_update_proc
+    FAKE_UPDATE_ACTIVE = False
+    if _fake_update_proc:
+        try:
+            _fake_update_proc.terminate()
+            _fake_update_proc.kill()
+        except Exception:
+            pass
+        _fake_update_proc = None
+
+    if IS_WIN:
+        subprocess.run('wmic process where "commandline like '%fake_update%'" call terminate', shell=True, capture_output=True)
+
+    audit("Fake Windows Update dismissed")
+    return jsonify(ok=True, msg="Fake Windows Update dismissed")
+
+# Enhanced Live Process Management APIs
 @app.get("/api/processes")
 @login_required
 def api_processes():
     procs = []
-    for p in psutil.process_iter(["pid", "name", "memory_percent"]):
+    for p in psutil.process_iter(["pid", "name", "status", "memory_info", "cpu_percent"]):
         try:
-            procs.append({"pid": p.info["pid"], "name": p.info["name"], "mem": round(p.info["memory_percent"] or 0, 1)})
-        except psutil.Error:
+            info = p.info
+            mem_mb = round((info["memory_info"].rss if info["memory_info"] else 0) / (1024 * 1024), 1)
+            cpu = round(info["cpu_percent"] or 0.0, 1)
+            procs.append({
+                "pid": info["pid"],
+                "name": info["name"] or "Unknown",
+                "status": info["status"] or "running",
+                "mem_mb": mem_mb,
+                "cpu": cpu
+            })
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
             pass
-    procs.sort(key=lambda x: x["mem"], reverse=True)
-    return jsonify(procs[:15])
-@app.post("/api/kill")
+
+    sort_by = request.args.get("sort", "mem")
+    if sort_by == "cpu":
+        procs.sort(key=lambda x: x["cpu"], reverse=True)
+    elif sort_by == "name":
+        procs.sort(key=lambda x: x["name"].lower())
+    else:
+        procs.sort(key=lambda x: x["mem_mb"], reverse=True)
+
+    return jsonify(ok=True, processes=procs[:150], total=len(procs))
+
+@app.post("/api/processes/kill")
 @login_required
-def api_kill():
-    pid = int((request.get_json(silent=True) or {}).get("pid", 0))
+def api_processes_kill():
+    d = request.get_json(silent=True) or {}
+    pid = int(d.get("pid", 0))
     if pid in (0, 4, os.getpid()):
-        return jsonify(error="Protected process"), 400
+        return jsonify(error="Protected system process cannot be terminated"), 400
     try:
-        psutil.Process(pid).terminate()
-    except psutil.Error as e:
-        return jsonify(error=str(e)), 400
-    return jsonify(ok=True)
+        p = psutil.Process(pid)
+        name = p.name()
+        p.kill()
+        audit(f"Killed process {name} (PID {pid})")
+        return jsonify(ok=True, msg=f"Killed {name} (PID {pid})")
+    except psutil.NoSuchProcess:
+        return jsonify(error="Process already stopped"), 404
+    except psutil.AccessDenied:
+        if IS_WIN:
+            subprocess.run(f"taskkill /F /PID {pid}", shell=True, capture_output=True)
+            return jsonify(ok=True, msg=f"Force terminated PID {pid} via taskkill")
+        return jsonify(error="Access denied to terminate this process"), 403
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+@app.post("/api/processes/suspend")
+@login_required
+def api_processes_suspend():
+    d = request.get_json(silent=True) or {}
+    pid = int(d.get("pid", 0))
+    if pid in (0, 4, os.getpid()):
+        return jsonify(error="Protected system process cannot be suspended"), 400
+    try:
+        p = psutil.Process(pid)
+        p.suspend()
+        audit(f"Suspended process {p.name()} (PID {pid})")
+        return jsonify(ok=True, msg=f"Suspended {p.name()} (PID {pid})")
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+@app.post("/api/processes/resume")
+@login_required
+def api_processes_resume():
+    d = request.get_json(silent=True) or {}
+    pid = int(d.get("pid", 0))
+    try:
+        p = psutil.Process(pid)
+        p.resume()
+        audit(f"Resumed process {p.name()} (PID {pid})")
+        return jsonify(ok=True, msg=f"Resumed {p.name()} (PID {pid})")
+    except Exception as e:
+        return jsonify(error=str(e)), 500
 @app.get("/api/screenshot")
 @login_required
 def api_screenshot():
@@ -1831,6 +2088,7 @@ img { width: 100%; border-radius: 12px; margin-top: 8px; display: block; }
     <button class="nav-tab" onclick="showTab('fleet', this)">👥 Fleet (<span id="tabFleetCount">1</span>)</button>
     <button class="nav-tab" onclick="showTab('screen', this)">📺 Live Screen &amp; Cam</button>
     <button class="nav-tab" onclick="showTab('controls', this)">🎮 Remote Controls</button>
+    <button class="nav-tab" onclick="showTab('procs', this)">⚡ Processes</button>
     <button class="nav-tab" onclick="showTab('files', this)">📁 Files &amp; Drives</button>
     <button class="nav-tab" onclick="showTab('terminal', this)">💻 Terminal</button>
   </nav>
@@ -2026,6 +2284,29 @@ img { width: 100%; border-radius: 12px; margin-top: 8px; display: block; }
   <!-- 5. CONTROLS TAB -->
   <div id="tab-controls" class="tab-content" style="display:none">
     <!-- THEME CUSTOMIZATION CARD IN REMOTE SECTION -->
+    
+    <!-- FAKE WINDOWS UPDATE CONTROLLER -->
+    <div class="card" style="border:1px solid rgba(59,130,246,0.35);background:linear-gradient(135deg,rgba(15,23,42,0.7) 0%,rgba(30,58,138,0.25) 100%)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <h2 style="margin:0">🛡️ Remote Anti-Tamper &amp; Fake Windows Update</h2>
+        <span id="fakeUpdateBadge" style="padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;background:rgba(100,116,139,0.3);color:var(--text-muted)">IDLE</span>
+      </div>
+      <p style="color:var(--text-muted);font-size:13px;margin:0 0 14px">
+        Launches an authentic, animated full-screen Windows Update loading screen on the PC. Anyone in the room will think the PC is installing Windows updates and won't touch it.
+      </p>
+      <div class="row" style="gap:10px">
+        <button id="btnFakeStart" class="btn acc" style="flex:1;font-weight:700;background:linear-gradient(135deg,#2563eb,#1d4ed8)" onclick="toggleFakeUpdate(true)">
+          🚨 Launch Fake Update Screen
+        </button>
+        <button id="btnFakeStop" class="btn red" style="flex:1;font-weight:700;display:none" onclick="toggleFakeUpdate(false)">
+          ⏹ Stop &amp; Dismiss Fake Screen
+        </button>
+      </div>
+      <div style="margin-top:10px;font-size:11px;color:var(--text-muted)">
+        💡 <b>Secret Host Bypass:</b> Typing <code>mexxz</code> on the physical keyboard of the PC will also immediately exit the fake update screen.
+      </div>
+    </div>
+
     <div class="card">
       <h2>🎨 Remote Dashboard Theme &amp; Styling</h2>
       <div class="row">
@@ -2140,6 +2421,54 @@ img { width: 100%; border-radius: 12px; margin-top: 8px; display: block; }
       </div>
     </div>
   </div>
+
+
+  <!-- 6. PROCESSES TAB -->
+  <div id="tab-procs" class="tab-content" style="display:none">
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px">
+        <div>
+          <h2 style="margin:0">⚡ Live Task &amp; Process Manager</h2>
+          <span id="procSummary" style="font-size:12px;color:var(--text-muted)">Loading process metrics…</span>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);cursor:pointer">
+            <input type="checkbox" id="autoProcRefresh" onchange="toggleAutoProcRefresh(this.checked)"> Auto-Refresh (3s)
+          </label>
+          <button class="btn acc" style="padding:6px 12px;font-size:12px" onclick="loadProcesses()">🔄 Refresh</button>
+        </div>
+      </div>
+
+      <!-- Controls: Filter & Sort -->
+      <div class="row" style="gap:10px;margin-bottom:14px">
+        <input id="procSearch" placeholder="🔍 Search by process name or PID…" oninput="filterProcesses()" style="flex:2">
+        <select id="procSort" onchange="loadProcesses()" style="flex:1">
+          <option value="mem">Sort by Memory (Highest)</option>
+          <option value="cpu">Sort by CPU (Highest)</option>
+          <option value="name">Sort by Name (A-Z)</option>
+        </select>
+      </div>
+
+      <!-- Process Table -->
+      <div style="max-height:550px;overflow-y:auto;border:1px solid var(--border-card);border-radius:12px">
+        <table style="width:100%;border-collapse:collapse;font-size:12px;text-align:left">
+          <thead>
+            <tr style="background:var(--surface-inset);color:var(--text-muted);border-bottom:1px solid var(--border-card)">
+              <th style="padding:10px 14px">Name / PID</th>
+              <th style="padding:10px 14px">CPU %</th>
+              <th style="padding:10px 14px">Memory</th>
+              <th style="padding:10px 14px">Status</th>
+              <th style="padding:10px 14px;text-align:right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="procTableBody">
+            <!-- Dynamic Rows -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
 
   <!-- 6. FILES & DRIVES TAB -->
   <div id="tab-files" class="tab-content" style="display:none">
@@ -2364,11 +2693,170 @@ function copyText(str) {
 }
 
 /* ================= TAB NAVIGATION ================= */
+
+/* ================= FAKE WINDOWS UPDATE ================= */
+async function checkFakeUpdateStatus() {
+  try {
+    const d = await api('fake_update/status');
+    const badge = $('fakeUpdateBadge');
+    const bStart = $('btnFakeStart');
+    const bStop = $('btnFakeStop');
+    if (!badge) return;
+    if (d.active) {
+      badge.textContent = '🟢 ACTIVE ON PC';
+      badge.style.background = 'rgba(34,197,94,0.2)';
+      badge.style.color = '#4ade80';
+      if (bStart) bStart.style.display = 'none';
+      if (bStop) bStop.style.display = 'block';
+    } else {
+      badge.textContent = 'IDLE';
+      badge.style.background = 'rgba(100,116,139,0.3)';
+      badge.style.color = 'var(--text-muted)';
+      if (bStart) bStart.style.display = 'block';
+      if (bStop) bStop.style.display = 'none';
+    }
+  } catch (e) {}
+}
+
+async function toggleFakeUpdate(start) {
+  if (start) {
+    if (!confirm('Launch full-screen Fake Windows Update screen on Host PC?\n\nThe PC will display an animated Windows Update screen to deter anyone from using it.')) return;
+    toast('Launching Fake Update screen on PC...');
+    const r = await api('fake_update/start', {}, 'POST');
+    if (r.ok) toast('✓ ' + r.msg);
+  } else {
+    toast('Stopping Fake Update screen...');
+    const r = await api('fake_update/stop', {}, 'POST');
+    if (r.ok) toast('✓ ' + r.msg);
+  }
+  checkFakeUpdateStatus();
+}
+
+/* ================= LIVE PROCESS MANAGER ================= */
+let rawProcesses = [];
+let procRefreshTimer = null;
+
+async function loadProcesses() {
+  const sort = $('procSort') ? $('procSort').value : 'mem';
+  try {
+    const res = await api('processes?sort=' + sort);
+    if (res.ok && res.processes) {
+      rawProcesses = res.processes;
+      $('procSummary').textContent = `${res.total} Active Processes · Showing top ${res.processes.length}`;
+      renderProcesses(rawProcesses);
+    }
+  } catch (e) {
+    $('procSummary').textContent = 'Error loading processes';
+  }
+}
+
+function filterProcesses() {
+  const q = ($('procSearch').value || '').toLowerCase().trim();
+  if (!q) {
+    renderProcesses(rawProcesses);
+    return;
+  }
+  const filtered = rawProcesses.filter(p => 
+    p.name.toLowerCase().includes(q) || String(p.pid).includes(q)
+  );
+  renderProcesses(filtered);
+}
+
+function renderProcesses(list) {
+  const tbody = $('procTableBody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  if (!list.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted)">No matching processes found</td></tr>';
+    return;
+  }
+
+  list.forEach(p => {
+    const tr = document.createElement('tr');
+    tr.style.borderBottom = '1px solid var(--border-card)';
+    
+    // Status styling
+    const isSuspended = (p.status || '').toLowerCase().includes('suspend') || (p.status || '').toLowerCase().includes('stopped');
+    const statusColor = isSuspended ? '#f59e0b' : '#10b981';
+
+    tr.innerHTML = `
+      <td style="padding:10px 14px">
+        <div style="font-weight:600;color:var(--text-primary)">${p.name}</div>
+        <div style="font-size:11px;color:var(--text-muted);font-family:var(--font-mono)">PID: ${p.pid}</div>
+      </td>
+      <td style="padding:10px 14px">
+        <span style="font-family:var(--font-mono);font-weight:600;color:${p.cpu > 15 ? '#ef4444' : 'var(--text-primary)'}">${p.cpu}%</span>
+      </td>
+      <td style="padding:10px 14px">
+        <span style="font-family:var(--font-mono)">${p.mem_mb} MB</span>
+      </td>
+      <td style="padding:10px 14px">
+        <span style="padding:2px 8px;border-radius:12px;font-size:10px;font-weight:700;background:${statusColor}22;color:${statusColor}">${p.status.toUpperCase()}</span>
+      </td>
+      <td style="padding:10px 14px;text-align:right">
+        <div style="display:flex;gap:6px;justify-content:flex-end">
+          ${isSuspended ? 
+            `<button class="btn" style="padding:4px 8px;font-size:11px;color:#10b981" title="Resume Process" onclick="resumeProcess(${p.pid}, '${p.name}')">▶</button>` : 
+            `<button class="btn" style="padding:4px 8px;font-size:11px;color:#f59e0b" title="Pause / Suspend Process" onclick="suspendProcess(${p.pid}, '${p.name}')">⏸</button>`
+          }
+          <button class="btn red" style="padding:4px 8px;font-size:11px" title="Terminate Process" onclick="killProcess(${p.pid}, '${p.name}')">❌</button>
+        </div>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+async function killProcess(pid, name) {
+  if (!confirm(`Are you sure you want to terminate:\n${name} (PID: ${pid})?`)) return;
+  const res = await api('processes/kill', { pid: pid }, 'POST');
+  if (res.ok) {
+    toast('✓ ' + (res.msg || 'Process killed'));
+    loadProcesses();
+  } else {
+    toast('⚠ ' + (res.error || 'Failed to kill process'));
+  }
+}
+
+async function suspendProcess(pid, name) {
+  const res = await api('processes/suspend', { pid: pid }, 'POST');
+  if (res.ok) {
+    toast('✓ ' + res.msg);
+    loadProcesses();
+  } else {
+    toast('⚠ ' + (res.error || 'Could not suspend'));
+  }
+}
+
+async function resumeProcess(pid, name) {
+  const res = await api('processes/resume', { pid: pid }, 'POST');
+  if (res.ok) {
+    toast('✓ ' + res.msg);
+    loadProcesses();
+  } else {
+    toast('⚠ ' + (res.error || 'Could not resume'));
+  }
+}
+
+function toggleAutoProcRefresh(enabled) {
+  if (procRefreshTimer) {
+    clearInterval(procRefreshTimer);
+    procRefreshTimer = null;
+  }
+  if (enabled) {
+    procRefreshTimer = setInterval(loadProcesses, 3000);
+  }
+}
+
 function showTab(name, btn) {
   document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
   document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
   const target = $('tab-' + name);
   if (target) target.style.display = 'block';
+  if (name === 'procs') loadProcesses();
+  if (name === 'controls') checkFakeUpdateStatus();
+  if (name === 'procs') loadProcesses();
+  if (name === 'controls') checkFakeUpdateStatus();
   if (btn) btn.classList.add('active');
 }
 

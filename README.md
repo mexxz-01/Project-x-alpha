@@ -117,6 +117,8 @@ Control your PC directly from your phone with the dedicated Android app:
 | **💻 Remote Admin Terminal** | Integrated Windows CMD and PowerShell terminal protected by authentication. |
 | **🎚️ Hardware Controls** | Smooth volume sliders, DDC/CI monitor brightness, and full media keys. |
 | **📁 Multi-Drive Explorer** | Browse `C:\`, `D:\`, USB drives, download files, and upload files remotely. |
+| **⚡ Live Process Manager** | Full task manager in your browser. Real-time CPU % & Memory MB meters, filter by name/PID, 1-click **End Task**, **Suspend/Pause**, and **Resume**. |
+| **🛡️ Fake Windows Update Screen** | 1-click remote guest deterrent. Launches an authentic animated full-screen Windows Update loading screen on the PC. Host keyboard bypass: `mexxz`. |
 | **⏻ Power & Sleep** | Shut down, restart, lock, sleep, hibernate, abort pending shutdowns, and sleep timers. |
 | **🗑️ Remote Clean Uninstall** | 1-click remote uninstaller cleans autostart registry, drops scheduled tasks, terminates process, and purges all installation files/folders. |
 | **🛡️ Silent Background Process** | Zero black console window; runs cleanly in Windows Task Manager under Background Processes. |

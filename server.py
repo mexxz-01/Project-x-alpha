@@ -2762,6 +2762,112 @@ input[type=range]::-webkit-slider-thumb:hover {
 }
 
 img { width: 100%; border-radius: 12px; margin-top: 8px; display: block; }
+
+/* ==========================================================================
+   ENHANCED MODERN MOTION & GLASSMORPHISM UPGRADES
+   ========================================================================== */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(14px) scale(0.99); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes pulseGlowRing {
+  0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.45); }
+  70% { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+}
+
+@keyframes floatSoft {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+@keyframes gradientShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.tab-content {
+  animation: fadeInUp 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.card {
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.28s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.28s ease !important;
+}
+
+.card:hover {
+  border-color: var(--border-card-hover) !important;
+  box-shadow: 0 16px 36px -8px rgba(0, 0, 0, 0.65), 0 0 24px -4px rgba(59, 130, 246, 0.12) !important;
+}
+
+.stat-box {
+  transition: transform 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease;
+}
+
+.stat-box:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-card-hover);
+  box-shadow: 0 6px 18px -4px rgba(0,0,0,0.4);
+}
+
+button, .btn {
+  position: relative;
+  overflow: hidden;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+button:hover, .btn:hover {
+  transform: translateY(-1.5px);
+  filter: brightness(1.08);
+}
+
+button:active, .btn:active {
+  transform: translateY(1px) scale(0.98);
+}
+
+button.acc, .btn.acc {
+  background-size: 200% 200%;
+  animation: gradientShift 6s ease infinite;
+}
+
+.nav-tab {
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+.nav-tab:hover {
+  transform: translateY(-1px);
+  color: var(--text-main) !important;
+  border-color: var(--border-card-hover) !important;
+}
+
+.nav-tab.active {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px -2px var(--accent-glow) !important;
+}
+
+.pulse-dot {
+  animation: pulseGlowRing 2s infinite !important;
+}
+
+.brand-badge {
+  background: var(--accent-gradient);
+  background-size: 200% 200%;
+  animation: gradientShift 8s ease infinite;
+  box-shadow: 0 2px 10px var(--accent-glow);
+}
+
+#login {
+  animation: fadeInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.server-pill {
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.server-pill:hover {
+  border-color: var(--accent);
+}
 </style></head><body>
 
 <!-- Connection Reconnect Banner -->

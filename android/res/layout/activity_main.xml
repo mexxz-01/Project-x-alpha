@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/rootContainer"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/bg_dark">
 
-    <!-- Modern App Bar with Glass Effect -->
+    <!-- Modern App Bar with Glass Effect & Action Controls -->
     <LinearLayout
         android:id="@+id/topBar"
         android:layout_width="match_parent"
@@ -12,9 +13,9 @@
         android:background="@color/bg_topbar"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:paddingStart="14dp"
-        android:paddingEnd="14dp"
-        android:elevation="4dp">
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        android:elevation="6dp">
 
         <!-- Live Status Pulse Dot -->
         <View
@@ -22,58 +23,71 @@
             android:layout_width="9dp"
             android:layout_height="9dp"
             android:background="@drawable/status_dot_green"
-            android:layout_marginEnd="9dp" />
+            android:layout_marginEnd="8dp" />
 
         <TextView
             android:id="@+id/txtAppTitle"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Project-X-Nano"
+            android:text="Project-X Frontend"
             android:textColor="@color/text_white"
-            android:textSize="16sp"
+            android:textSize="15sp"
             android:textStyle="bold"
             android:ellipsize="end"
             android:singleLine="true" />
 
-        <!-- Quick Action Buttons with Pill Badges -->
+        <!-- Auto-hide / Fullscreen toggle -->
+        <Button
+            android:id="@+id/btnFullscreen"
+            android:layout_width="wrap_content"
+            android:layout_height="32dp"
+            android:text="⛶ Full"
+            android:textSize="11sp"
+            android:textColor="@color/accent_cyan"
+            android:background="@drawable/btn_action_pill"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:layout_marginEnd="5dp" />
+
+        <!-- Quick Action Buttons -->
         <Button
             android:id="@+id/btnQuickLock"
             android:layout_width="wrap_content"
-            android:layout_height="34dp"
+            android:layout_height="32dp"
             android:text="🔒 Lock"
             android:textSize="11sp"
             android:textColor="#f87171"
             android:background="@drawable/btn_action_pill"
-            android:paddingStart="10dp"
-            android:paddingEnd="10dp"
-            android:layout_marginEnd="6dp" />
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:layout_marginEnd="5dp" />
 
         <Button
             android:id="@+id/btnSwitchPC"
             android:layout_width="wrap_content"
-            android:layout_height="34dp"
-            android:text="⚡ Server"
+            android:layout_height="32dp"
+            android:text="⚡ Backend"
             android:textSize="11sp"
-            android:textColor="@color/accent_cyan"
+            android:textColor="@color/accent_blue"
             android:background="@drawable/btn_action_pill"
-            android:paddingStart="10dp"
-            android:paddingEnd="10dp"
-            android:layout_marginEnd="6dp" />
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:layout_marginEnd="5dp" />
 
         <Button
             android:id="@+id/btnRefresh"
             android:layout_width="wrap_content"
-            android:layout_height="34dp"
+            android:layout_height="32dp"
             android:text="🔄"
-            android:textSize="12sp"
+            android:textSize="11sp"
             android:textColor="@color/text_white"
             android:background="@drawable/btn_action_pill"
-            android:paddingStart="10dp"
-            android:paddingEnd="10dp" />
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp" />
     </LinearLayout>
 
-    <!-- Top Loading Bar -->
+    <!-- Top Loading Indicator -->
     <ProgressBar
         android:id="@+id/progressBar"
         style="?android:attr/progressBarStyleHorizontal"
@@ -82,10 +96,10 @@
         android:layout_below="@id/topBar"
         android:indeterminate="false"
         android:max="100"
-        android:progressTint="@color/accent_blue"
+        android:progressTint="@color/accent_cyan"
         android:visibility="gone" />
 
-    <!-- Fullscreen Controller WebView -->
+    <!-- Fullscreen Controller WebView (Frontend PC Viewport) -->
     <WebView
         android:id="@+id/webView"
         android:layout_width="match_parent"
@@ -93,7 +107,7 @@
         android:layout_below="@id/progressBar"
         android:visibility="gone" />
 
-    <!-- Setup / Connect Dialog Card -->
+    <!-- Frontend Setup & Backend Connection Manager Card -->
     <ScrollView
         android:id="@+id/setupView"
         android:layout_width="match_parent"
@@ -105,103 +119,204 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:padding="20dp"
+            android:padding="16dp"
             android:gravity="center">
 
-            <!-- Card Box -->
+            <!-- Card Box with Glassmorphism -->
             <LinearLayout
+                android:id="@+id/mainCard"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
                 android:background="@drawable/card_glass_bg"
-                android:padding="22dp">
+                android:padding="20dp">
 
+                <!-- Frontend Branding Header -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="6dp">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="⚡ Project-X-Nano"
+                        android:textColor="@color/text_white"
+                        android:textSize="20sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/txtClientBadge"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="📱 FRONTEND v2.0"
+                        android:textColor="@color/accent_cyan"
+                        android:textSize="10sp"
+                        android:textStyle="bold"
+                        android:background="@drawable/badge_frontend" />
+                </LinearLayout>
+
+                <!-- Ping / Connection Status line -->
                 <TextView
+                    android:id="@+id/txtBackendStatus"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="⚡ Project-X-Nano"
-                    android:textColor="@color/text_white"
-                    android:textSize="22sp"
-                    android:textStyle="bold"
-                    android:layout_gravity="center_horizontal"
-                    android:layout_marginBottom="4dp" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Master Host Controller &amp; Fleet Hub"
+                    android:text="● Ready to connect to PC backend"
                     android:textColor="@color/text_muted"
-                    android:textSize="13sp"
-                    android:layout_gravity="center_horizontal"
-                    android:layout_marginBottom="24dp" />
+                    android:textSize="12sp"
+                    android:layout_marginBottom="16dp" />
 
-                <!-- Server URL Label & Field -->
+                <!-- Quick Presets for Connection -->
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="🔗 Remote Server / Tunnel URL"
+                    android:text="⚡ QUICK BACKEND PRESETS"
+                    android:textColor="@color/accent_cyan"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:letterSpacing="0.05"
+                    android:layout_marginBottom="6dp" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginBottom="16dp">
+
+                    <Button
+                        android:id="@+id/presetHotspot"
+                        android:layout_width="0dp"
+                        android:layout_height="36dp"
+                        android:layout_weight="1"
+                        android:text="📶 Hotspot"
+                        android:textSize="11sp"
+                        android:textColor="@color/text_white"
+                        android:background="@drawable/btn_preset_pill"
+                        android:layout_marginEnd="4dp" />
+
+                    <Button
+                        android:id="@+id/presetLan"
+                        android:layout_width="0dp"
+                        android:layout_height="36dp"
+                        android:layout_weight="1"
+                        android:text="🏠 Wi-Fi LAN"
+                        android:textSize="11sp"
+                        android:textColor="@color/text_white"
+                        android:background="@drawable/btn_preset_pill"
+                        android:layout_marginEnd="4dp" />
+
+                    <Button
+                        android:id="@+id/presetCloud"
+                        android:layout_width="0dp"
+                        android:layout_height="36dp"
+                        android:layout_weight="1"
+                        android:text="🌐 Cloud"
+                        android:textSize="11sp"
+                        android:textColor="@color/text_white"
+                        android:background="@drawable/btn_preset_pill" />
+                </LinearLayout>
+
+                <!-- Backend Host URL Field -->
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="🔗 Backend PC Host URL"
                     android:textColor="@color/text_muted"
                     android:textSize="12sp"
                     android:textStyle="bold"
-                    android:layout_marginBottom="6dp" />
+                    android:layout_marginBottom="5dp" />
 
                 <EditText
                     android:id="@+id/editServerUrl"
                     android:layout_width="match_parent"
-                    android:layout_height="46dp"
+                    android:layout_height="44dp"
                     android:background="@drawable/edittext_rounded_bg"
                     android:textColor="@color/text_white"
                     android:textColorHint="@color/text_hint"
-                    android:hint="http://192.168.1.50:8765 or https://*.trycloudflare.com"
+                    android:hint="http://192.168.137.1:8765"
                     android:singleLine="true"
                     android:inputType="textUri"
-                    android:paddingStart="14dp"
-                    android:paddingEnd="14dp"
-                    android:textSize="14sp"
-                    android:layout_marginBottom="14dp" />
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp"
+                    android:textSize="13sp"
+                    android:layout_marginBottom="12dp" />
 
-                <!-- Password Label & Field -->
+                <!-- Password Field -->
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="🔑 Master Admin Password"
+                    android:text="🔑 PC Master Auth Password"
                     android:textColor="@color/text_muted"
                     android:textSize="12sp"
                     android:textStyle="bold"
-                    android:layout_marginBottom="6dp" />
+                    android:layout_marginBottom="5dp" />
 
                 <EditText
                     android:id="@+id/editPassword"
                     android:layout_width="match_parent"
-                    android:layout_height="46dp"
+                    android:layout_height="44dp"
                     android:background="@drawable/edittext_rounded_bg"
                     android:textColor="@color/text_white"
                     android:textColorHint="@color/text_hint"
                     android:hint="••••••••"
                     android:singleLine="true"
                     android:inputType="textPassword"
-                    android:paddingStart="14dp"
-                    android:paddingEnd="14dp"
-                    android:textSize="14sp"
-                    android:layout_marginBottom="22dp" />
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp"
+                    android:textSize="13sp"
+                    android:layout_marginBottom="16dp" />
 
-                <!-- Connect Button with Gradient -->
+                <!-- Secondary Actions: Ping & Test -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginBottom="14dp">
+
+                    <Button
+                        android:id="@+id/btnTestPing"
+                        android:layout_width="0dp"
+                        android:layout_height="40dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/btn_secondary_glass"
+                        android:textColor="@color/accent_cyan"
+                        android:text="⚡ Ping Backend"
+                        android:textSize="12sp"
+                        android:textStyle="bold"
+                        android:layout_marginEnd="6dp" />
+
+                    <Button
+                        android:id="@+id/btnSaveConfig"
+                        android:layout_width="0dp"
+                        android:layout_height="40dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/btn_secondary_glass"
+                        android:textColor="@color/text_white"
+                        android:text="💾 Save Host"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <!-- Primary Connect Button -->
                 <Button
                     android:id="@+id/btnConnect"
                     android:layout_width="match_parent"
-                    android:layout_height="50dp"
+                    android:layout_height="48dp"
                     android:background="@drawable/btn_primary_gradient"
                     android:textColor="@color/text_white"
-                    android:text="🚀 Connect to Host PC"
-                    android:textSize="15sp"
+                    android:text="🚀 Connect &amp; Control PC"
+                    android:textSize="14sp"
                     android:textStyle="bold"
-                    android:layout_marginBottom="18dp" />
+                    android:layout_marginBottom="14dp" />
 
-                <!-- Quick Help / Network Details -->
+                <!-- Architecture & Security Note -->
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="💡 Connection Modes:\n• Wi-Fi / Hotspot: http://192.168.1.x:8765 or http://192.168.137.1:8765\n• Anywhere: Use your Cloudflare Tunnel / Ngrok link with end-to-end security."
+                    android:text="🔒 Architecture:\n• App serves as your native Android client frontend.\n• Your PC runs the high-speed backend agent on port 8765.\n• Full system UI auto-hides for edge-to-edge controller view."
                     android:textColor="@color/text_hint"
                     android:textSize="11sp"
                     android:lineSpacingExtra="3dp" />
@@ -209,4 +324,93 @@
 
         </LinearLayout>
     </ScrollView>
+
+    <!-- Floating Action Button for Exiting Fullscreen / Restoring Bar -->
+    <Button
+        android:id="@+id/btnFloatingRestore"
+        android:layout_width="wrap_content"
+        android:layout_height="36dp"
+        android:layout_alignParentBottom="true"
+        android:layout_alignParentEnd="true"
+        android:layout_margin="16dp"
+        android:background="@drawable/floating_toggle_bg"
+        android:text="⚙ Menu"
+        android:textSize="12sp"
+        android:textColor="@color/text_white"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        android:visibility="gone"
+        android:elevation="10dp" />
+
+    <!-- Animated Opening Splash Overlay -->
+    <RelativeLayout
+        android:id="@+id/splashOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/bg_dark"
+        android:clickable="true"
+        android:focusable="true"
+        android:elevation="20dp"
+        android:gravity="center">
+
+        <LinearLayout
+            android:id="@+id/splashContainer"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:padding="24dp">
+
+            <!-- Glowing Icon Badge -->
+            <TextView
+                android:id="@+id/splashIcon"
+                android:layout_width="80dp"
+                android:layout_height="80dp"
+                android:background="@drawable/splash_icon_bg"
+                android:text="⚡"
+                android:textColor="@color/text_white"
+                android:textSize="36sp"
+                android:gravity="center"
+                android:elevation="8dp"
+                android:layout_marginBottom="18dp" />
+
+            <TextView
+                android:id="@+id/splashTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="PROJECT-X-NANO"
+                android:textColor="@color/text_white"
+                android:textSize="22sp"
+                android:textStyle="bold"
+                android:letterSpacing="0.08"
+                android:layout_marginBottom="4dp" />
+
+            <TextView
+                android:id="@+id/splashSubtitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Native Mobile Frontend • PC Gateway"
+                android:textColor="@color/accent_cyan"
+                android:textSize="12sp"
+                android:layout_marginBottom="24dp" />
+
+            <!-- Animated Status Loading Line -->
+            <ProgressBar
+                android:id="@+id/splashProgress"
+                style="?android:attr/progressBarStyleSmall"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:indeterminateTint="@color/accent_blue"
+                android:layout_marginBottom="10dp" />
+
+            <TextView
+                android:id="@+id/splashStatus"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Connecting to PC Backend..."
+                android:textColor="@color/text_muted"
+                android:textSize="11sp" />
+        </LinearLayout>
+    </RelativeLayout>
+
 </RelativeLayout>

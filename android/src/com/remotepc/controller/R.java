@@ -44,26 +44,49 @@ public final class R {
     public static final int text_white=0x7f010011;
   }
   public static final class drawable {
-    public static final int btn_action_pill=0x7f020000;
-    public static final int btn_primary_gradient=0x7f020001;
-    public static final int card_glass_bg=0x7f020002;
-    public static final int edittext_rounded_bg=0x7f020003;
-    public static final int ic_launcher=0x7f020004;
-    public static final int status_dot_green=0x7f020005;
+    public static final int badge_frontend=0x7f020000;
+    public static final int btn_action_pill=0x7f020001;
+    public static final int btn_preset_pill=0x7f020002;
+    public static final int btn_primary_gradient=0x7f020003;
+    public static final int btn_secondary_glass=0x7f020004;
+    public static final int card_glass_bg=0x7f020005;
+    public static final int edittext_rounded_bg=0x7f020006;
+    public static final int floating_toggle_bg=0x7f020007;
+    public static final int ic_launcher=0x7f020008;
+    public static final int splash_icon_bg=0x7f020009;
+    public static final int status_dot_green=0x7f02000a;
   }
   public static final class id {
     public static final int btnConnect=0x7f030000;
-    public static final int btnQuickLock=0x7f030001;
-    public static final int btnRefresh=0x7f030002;
-    public static final int btnSwitchPC=0x7f030003;
-    public static final int editPassword=0x7f030004;
-    public static final int editServerUrl=0x7f030005;
-    public static final int progressBar=0x7f030006;
-    public static final int setupView=0x7f030007;
-    public static final int statusDot=0x7f030008;
-    public static final int topBar=0x7f030009;
-    public static final int txtAppTitle=0x7f03000a;
-    public static final int webView=0x7f03000b;
+    public static final int btnFloatingRestore=0x7f030001;
+    public static final int btnFullscreen=0x7f030002;
+    public static final int btnQuickLock=0x7f030003;
+    public static final int btnRefresh=0x7f030004;
+    public static final int btnSaveConfig=0x7f030005;
+    public static final int btnSwitchPC=0x7f030006;
+    public static final int btnTestPing=0x7f030007;
+    public static final int editPassword=0x7f030008;
+    public static final int editServerUrl=0x7f030009;
+    public static final int mainCard=0x7f03000a;
+    public static final int presetCloud=0x7f03000b;
+    public static final int presetHotspot=0x7f03000c;
+    public static final int presetLan=0x7f03000d;
+    public static final int progressBar=0x7f03000e;
+    public static final int rootContainer=0x7f03000f;
+    public static final int setupView=0x7f030010;
+    public static final int splashContainer=0x7f030011;
+    public static final int splashIcon=0x7f030012;
+    public static final int splashOverlay=0x7f030013;
+    public static final int splashProgress=0x7f030014;
+    public static final int splashStatus=0x7f030015;
+    public static final int splashSubtitle=0x7f030016;
+    public static final int splashTitle=0x7f030017;
+    public static final int statusDot=0x7f030018;
+    public static final int topBar=0x7f030019;
+    public static final int txtAppTitle=0x7f03001a;
+    public static final int txtBackendStatus=0x7f03001b;
+    public static final int txtClientBadge=0x7f03001c;
+    public static final int webView=0x7f03001d;
   }
   public static final class layout {
     public static final int activity_main=0x7f040000;

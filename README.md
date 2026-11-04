@@ -97,6 +97,21 @@ psexec \\192.168.1.11 -u AdminUser -p AdminPassword -d -s powershell -Command "i
 
 ---
 
+## 📶 Hotspot Auto-Installer
+
+Deploy the agent automatically the moment any device joins your Windows Mobile Hotspot. Useful for field setups where you want the agent live before you even open a browser.
+
+1. Turn on **Settings → Network & Internet → Mobile hotspot**.
+2. Run `hotspot\install_hotspot_trigger.bat` (self-elevates).
+3. Optionally paste a Discord webhook when prompted.
+
+The trigger polls the ICS subnet (`192.168.137.0/24`) every 5 seconds. On the first unknown client it runs the standard `setup.ps1` elevated via a `RunLevel Highest` scheduled task — no UAC prompt. If the agent is already present it just respawns the process instead of reinstalling.
+
+- **Log:** `%PROGRAMDATA%\Project-X-Nano\hotspot-trigger.log`
+- **Remove:** `hotspot\uninstall_hotspot_trigger.bat`
+
+Requires a Wi-Fi adapter, internet on the host, and a Private network profile on the hotspot interface.
+
 ## 📱 Android Controller APK
 
 Control your PC directly from your phone with the dedicated Android app:
@@ -106,7 +121,6 @@ Control your PC directly from your phone with the dedicated Android app:
 - **Features:** Auto-discovers servers, saves master password for 1-tap login, instant background PC lock, real-time screen stream, and fleet switching.
 
 ---
-
 ## ✨ Features Overview
 
 | Category | Highlights |

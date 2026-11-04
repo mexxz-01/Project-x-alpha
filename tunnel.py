@@ -10,11 +10,25 @@ import atexit
 import platform
 from pathlib import Path
 
+IS_WIN = platform.system() == "Windows"
+IS_LINUX = platform.system() == "Linux"
+ARCH = platform.machine().lower()
+
 BASE = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).parent
-CLOUDFLARED_EXE = BASE / "cloudflared.exe"
 PUBLIC_URL_FILE = BASE / "public_url.txt"
 CONFIG_FILE = BASE / "config.json"
-CLOUDFLARED_URL = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe"
+
+if IS_WIN:
+    CLOUDFLARED_EXE = BASE / "cloudflared.exe"
+    CLOUDFLARED_URL = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe"
+else:
+    CLOUDFLARED_EXE = BASE / "cloudflared"
+    if "aarch64" in ARCH or "arm64" in ARCH:
+        CLOUDFLARED_URL = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64"
+    elif "arm" in ARCH:
+        CLOUDFLARED_URL = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm"
+    else:
+        CLOUDFLARED_URL = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64"
 
 _tunnel_process = None
 _public_url = None
@@ -29,17 +43,27 @@ def get_public_url():
     return _public_url
 
 def ensure_tunnel_binary():
-    """Ensure cloudflared.exe exists locally in the install directory."""
+    """Ensure cloudflared exists locally in the install directory."""
     if CLOUDFLARED_EXE.exists() and CLOUDFLARED_EXE.stat().st_size > 10000000:
+        if not IS_WIN:
+            try:
+                os.chmod(CLOUDFLARED_EXE, 0o755)
+            except Exception:
+                pass
         return True
 
-    print("[Tunnel] Downloading official Cloudflare Tunnel engine...")
+    print(f"[Tunnel] Downloading official Cloudflare Tunnel engine for {platform.system()} ({ARCH})...")
     try:
         req = urllib.request.Request(CLOUDFLARED_URL, headers={"User-Agent": "Mozilla/5.0"})
         with urllib.request.urlopen(req, timeout=45) as resp:
             data = resp.read()
         with open(CLOUDFLARED_EXE, "wb") as f:
             f.write(data)
+        if not IS_WIN:
+            try:
+                os.chmod(CLOUDFLARED_EXE, 0o755)
+            except Exception:
+                pass
         print(f"[Tunnel] Tunnel engine installed successfully ({len(data)} bytes).")
         return True
     except Exception as e:
@@ -55,7 +79,10 @@ def start_tunnel(port: int = 8765, report_url: str = "") -> str:
 
     # Terminate any previous tunnel process
     try:
-        subprocess.run(["taskkill", "/F", "/IM", "cloudflared.exe"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if IS_WIN:
+            subprocess.run(["taskkill", "/F", "/IM", "cloudflared.exe"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        else:
+            subprocess.run(["pkill", "-9", "-f", "cloudflared"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         time.sleep(0.5)
     except Exception:
         pass
@@ -131,7 +158,7 @@ def start_tunnel(port: int = 8765, report_url: str = "") -> str:
 
 def report_public_url(url: str, report_url: str):
     """Upload/POST public tunnel link to user's remote server, Discord, Telegram, or webhook."""
-    if not report_url or not url:
+    if not report_url or not url or not report_url.startswith(("http://", "https://")):
         return
 
     def _post():

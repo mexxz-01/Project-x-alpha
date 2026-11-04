@@ -1,34 +1,30 @@
 {
-    "port":  8765,
-    "host":  "0.0.0.0",
-    "password_hash":  "scrypt:32768:8:1",
-    "secret_key":  "1ad46f899614dd58a8f94dc239cebe791b895d7134ddfbcc29e7c5e58eec1dfd",
-    "file_roots":  [
-
-                   ],
-    "ntfy_topic":  "",
-    "battery_low":  20,
-    "terminal_enabled":  true,
-    "terminal_timeout":  60,
-    "autostart_as_admin":  false,
-    "commands":  {
-                     "Network info":  "ipconfig",
-                     "Flush DNS":  "ipconfig /flushdns",
-                     "Disk space":  "wmic logicaldisk get caption,freespace,size",
-                     "Clean temp files":  "del /q /f /s %TEMP%\\*",
-                     "Backup Documents":  "robocopy %USERPROFILE%\\Documents %USERPROFILE%\\Documents_Backup /E /XO /R:1 /W:1"
-                 },
-    "apps":  {
-                 "Notepad":  "notepad.exe",
-                 "Calculator":  "calc.exe",
-                 "File Explorer":  "explorer.exe",
-                 "Task Manager":  "taskmgr.exe",
-                 "Chrome":  "start chrome"
-             },
-    "fleet":  [
-
-              ],
-    "auto_forward":  true,
-    "tunnel_report_url":  "",
-    "last_public_url":  ""
+  "port": 8765,
+  "host": "0.0.0.0",
+  "password_hash": "scrypt:32768:8:1$EjrTHKvILpxhnGnv$7ef5a05c213ed971a60e2b27c9e19da0e8806bfd60629f39e468943005f1ea9c36c02c86e9d65a19b59b57927a9b763ef3b8f77d2dff37710050b722f4755091",
+  "secret_key": "1ad46f899614dd58a8f94dc239cebe791b895d7134ddfbcc29e7c5e58eec1dfd",
+  "file_roots": [],
+  "ntfy_topic": "",
+  "battery_low": 20,
+  "terminal_enabled": true,
+  "terminal_timeout": 60,
+  "autostart_as_admin": false,
+  "commands": {
+    "Network info": "ipconfig",
+    "Flush DNS": "ipconfig /flushdns",
+    "Disk space": "wmic logicaldisk get caption,freespace,size",
+    "Clean temp files": "del /q /f /s %TEMP%\\*",
+    "Backup Documents": "robocopy %USERPROFILE%\\Documents %USERPROFILE%\\Documents_Backup /E /XO /R:1 /W:1"
+  },
+  "apps": {
+    "Notepad": "notepad.exe",
+    "Calculator": "calc.exe",
+    "File Explorer": "explorer.exe",
+    "Task Manager": "taskmgr.exe",
+    "Chrome": "start chrome"
+  },
+  "fleet": [],
+  "auto_forward": true,
+  "tunnel_report_url": "",
+  "last_public_url": ""
 }

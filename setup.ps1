@@ -214,14 +214,9 @@ Write-Host "========================================================" -Foregroun
 Write-Host ""
 $openChoice = Read-Host "[?] Do you want to open the dashboard now? (Y/N)"
 if ($openChoice -match "^[Yy]") {
-    $enteredPwd = Read-Host "[?] Enter master password"
-    if ($enteredPwd -eq "mexxz@2007") {
-        Write-Host "[+] Password verified! Opening dashboard..." -ForegroundColor Green
-        $targetUrl = if ($publicUrl) { $publicUrl } else { "http://localhost:8765" }
-        Start-Process $targetUrl
-    } else {
-        Write-Host "[-] Incorrect password. Dashboard will not be opened." -ForegroundColor Red
-    }
+    $targetUrl = if ($publicUrl) { $publicUrl } else { "http://localhost:8765" }
+    Write-Host "[*] Opening dashboard at $targetUrl..." -ForegroundColor Green
+    Start-Process $targetUrl
 } else {
-    Write-Host "[*] Skipping dashboard launch. Background agent is fully active." -ForegroundColor Cyan
+    Write-Host "[*] Dashboard launch skipped. Background agent is fully active." -ForegroundColor Cyan
 }

@@ -62,10 +62,11 @@ if sys.stdout is None or sys.stderr is None:
     sys.stderr = sys.stderr or _log
 IS_WIN = platform.system() == "Windows"
 IS_MAC = platform.system() == "Darwin"
+IS_LINUX = platform.system() == "Linux"
 DEFAULT_CONFIG = {
     "port": 8765,
     "host": "0.0.0.0",  # use 127.0.0.1 to allow only this PC
-    "password_hash": "scrypt:32768:8:1$JQvnZk7AdJGY6Anr$3d97cf28afcca33fc5ddfcc7fa019e926e374ed631a63d912b8ce12ddf6ea671ee044d10ee495e896a700e00de61a40795dd39893d979e4bdfd1cef00f9a1a96",
+    "password_hash": "scrypt:32768:8:1$EjrTHKvILpxhnGnv$7ef5a05c213ed971a60e2b27c9e19da0e8806bfd60629f39e468943005f1ea9c36c02c86e9d65a19b59b57927a9b763ef3b8f77d2dff37710050b722f4755091",
     "secret_key": "",
     # Folders the file browser may access. Empty = your home folder only.
     "file_roots": [],
@@ -131,6 +132,25 @@ app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     PERMANENT_SESSION_LIFETIME=timedelta(days=7),  # stay logged in on your phone
 )
+
+def get_client_ip():
+    """Extract real client IP safely, accounting for Cloudflare Tunnel or reverse proxies."""
+    cf_ip = request.headers.get("CF-Connecting-IP")
+    if cf_ip:
+        return cf_ip.strip()
+    xff = request.headers.get("X-Forwarded-For")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.remote_addr or "127.0.0.1"
+
+
+@app.after_request
+def set_security_headers(response):
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
 # Initialize Native C / C++ acceleration engines
 bridge = NativeBridge()
 screen_engine = ScreenEngine()
@@ -179,12 +199,12 @@ def login_required(fn):
 @app.post("/login")
 @app.post("/api/login")
 def login():
-    ip = request.remote_addr
+    ip = get_client_ip()
     count, locked = FAILS.get(ip, (0, 0))
     if time.time() < locked:
         return jsonify(error="Too many attempts. Wait a minute."), 429
     pw = (request.get_json(silent=True) or {}).get("password", "")
-    if check_password_hash(CFG["password_hash"], pw) or pw == "mexxz@2007":
+    if pw and check_password_hash(CFG["password_hash"], pw):
         FAILS.pop(ip, None)
         session["ok"] = True
         session.permanent = True
@@ -265,8 +285,8 @@ def api_power(action):
 def api_emergency_lockdown():
     data = request.get_json(silent=True) or {}
     pw = data.get("password", "")
-    if not (check_password_hash(CFG["password_hash"], pw) or pw == "mexxz@2007"):
-        push_alert(f"Failed emergency lockdown attempt from {request.remote_addr}")
+    if not (pw and check_password_hash(CFG["password_hash"], pw)):
+        push_alert(f"Failed emergency lockdown attempt from {get_client_ip()}")
         audit("emergency lockdown FAILED: invalid password")
         return jsonify(error="Invalid master password confirmation"), 403
     audit(f"EMERGENCY LOCKDOWN executed from {request.remote_addr}")
@@ -364,6 +384,213 @@ def api_stats():
         battery=None if not bat else {"percent": round(bat.percent), "plugged": bat.power_plugged},
         uptime_min=int((time.time() - psutil.boot_time()) / 60),
     )
+# ---------------------------------------------------------------- Coder & Power-User Diagnostics APIs
+
+# 1. Network & Listening Ports Explorer
+@app.get("/api/network/ports")
+@login_required
+def api_network_ports():
+    ports = []
+    seen = set()
+    try:
+        for c in psutil.net_connections(kind="inet"):
+            if c.status == psutil.CONN_LISTEN or c.type == socket.SOCK_DGRAM:
+                laddr = f"{c.laddr.ip}:{c.laddr.port}" if c.laddr else ""
+                key = (laddr, c.pid)
+                if key in seen:
+                    continue
+                seen.add(key)
+                
+                pname = "System"
+                if c.pid:
+                    try:
+                        pname = psutil.Process(c.pid).name()
+                    except Exception:
+                        pname = f"PID {c.pid}"
+                
+                ports.append({
+                    "port": c.laddr.port if c.laddr else 0,
+                    "bind": c.laddr.ip if c.laddr else "0.0.0.0",
+                    "proto": "TCP" if c.type == socket.SOCK_STREAM else "UDP",
+                    "status": c.status or "LISTENING",
+                    "pid": c.pid or 0,
+                    "process": pname
+                })
+        ports.sort(key=lambda x: x["port"])
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+    return jsonify(ok=True, ports=ports[:150], total=len(ports))
+
+@app.post("/api/network/kill_port")
+@login_required
+def api_network_kill_port():
+    d = request.get_json(silent=True) or {}
+    pid = int(d.get("pid", 0))
+    port = int(d.get("port", 0))
+    if pid in (0, 4, os.getpid()):
+        return jsonify(error="Protected system process cannot be terminated"), 400
+    try:
+        if pid:
+            p = psutil.Process(pid)
+            pname = p.name()
+            p.kill()
+            audit(f"Freed port {port} by terminating {pname} (PID {pid})")
+            return jsonify(ok=True, msg=f"Freed port {port} (killed {pname})")
+        return jsonify(error="No process associated with this port"), 400
+    except Exception as e:
+        if pid:
+            if IS_WIN:
+                subprocess.run(f"taskkill /F /PID {pid}", shell=True, capture_output=True)
+            else:
+                subprocess.run(f"kill -9 {pid}", shell=True, capture_output=True)
+            return jsonify(ok=True, msg=f"Freed port {port} via force terminate")
+        return jsonify(error=str(e)), 500
+
+# 2. Windows & Linux Services Manager
+@app.get("/api/services")
+@login_required
+def api_services_list():
+    services = []
+    try:
+        if IS_WIN:
+            cmd = 'powershell -NoProfile -Command "Get-Service | Select-Object -Property Name, DisplayName, Status, StartType | ConvertTo-Json -Compress"'
+            out = subprocess.check_output(cmd, shell=True, text=True, stderr=subprocess.DEVNULL)
+            raw = json.loads(out)
+            if isinstance(raw, dict):
+                raw = [raw]
+            for s in raw:
+                services.append({
+                    "name": s.get("Name", ""),
+                    "display": s.get("DisplayName", ""),
+                    "status": "Running" if s.get("Status") in (4, "Running") else "Stopped",
+                    "startup": str(s.get("StartType", "Unknown"))
+                })
+        elif IS_LINUX:
+            out = subprocess.check_output(
+                ["systemctl", "list-units", "--type=service", "--all", "--no-pager", "--no-legend"],
+                text=True, stderr=subprocess.DEVNULL
+            )
+            for line in out.splitlines():
+                parts = line.split(None, 4)
+                if len(parts) >= 4:
+                    s_unit = parts[0].replace(".service", "")
+                    s_active = parts[2]
+                    s_sub = parts[3]
+                    s_desc = parts[4] if len(parts) > 4 else s_unit
+                    services.append({
+                        "name": s_unit,
+                        "display": s_desc,
+                        "status": "Running" if s_active == "active" and s_sub == "running" else "Stopped",
+                        "startup": s_active
+                    })
+        services.sort(key=lambda x: (x["status"] != "Running", x["display"].lower()))
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+    return jsonify(ok=True, services=services[:180], total=len(services))
+
+@app.post("/api/services/action")
+@login_required
+def api_services_action():
+    d = request.get_json(silent=True) or {}
+    sname = d.get("name", "").strip()
+    action = d.get("action", "").lower().strip()
+    if not sname or action not in ("start", "stop", "restart"):
+        return jsonify(error="Invalid service action"), 400
+    if not re.match(r"^[a-zA-Z0-9_\-\.\ ]+$", sname):
+        return jsonify(error="Invalid service name format"), 400
+    try:
+        if IS_WIN:
+            cmd = ["powershell", "-NoProfile", "-Command", f"{action.capitalize()}-Service -Name '{sname}' {'-Force' if action != 'start' else ''}"]
+            subprocess.run(cmd, capture_output=True)
+        elif IS_LINUX:
+            cmd = ["systemctl", action, sname]
+            res = subprocess.run(cmd, capture_output=True)
+            if res.returncode != 0:
+                subprocess.run(["sudo", "systemctl", action, sname], capture_output=True)
+        audit(f"Service {sname} action: {action}")
+        return jsonify(ok=True, msg=f"Service '{sname}' {action} command issued")
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+# 3. Bi-Directional Clipboard Sync
+@app.get("/api/clipboard")
+@login_required
+def api_clipboard_get():
+    text = ""
+    try:
+        if pyperclip:
+            text = pyperclip.paste()
+        elif IS_WIN:
+            text = subprocess.check_output("powershell -NoProfile -Command Get-Clipboard", shell=True, text=True, errors="replace").strip()
+        elif IS_LINUX:
+            for cmd in [["xclip", "-selection", "clipboard", "-o"], ["xsel", "-b", "-o"], ["wl-paste"]]:
+                try:
+                    text = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL)
+                    if text:
+                        break
+                except Exception:
+                    pass
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+    return jsonify(ok=True, text=text or "")
+
+@app.post("/api/clipboard")
+@login_required
+def api_clipboard_set():
+    d = request.get_json(silent=True) or {}
+    text = d.get("text", "")
+    try:
+        if pyperclip:
+            pyperclip.copy(text)
+        elif IS_WIN:
+            p = subprocess.Popen("clip", stdin=subprocess.PIPE, shell=True)
+            p.communicate(input=text.encode("utf-8"))
+        elif IS_LINUX:
+            for cmd in [["xclip", "-selection", "clipboard"], ["xsel", "-b", "-i"], ["wl-copy"]]:
+                try:
+                    p = subprocess.Popen(cmd, stdin=subprocess.PIPE)
+                    p.communicate(input=text.encode("utf-8"))
+                    break
+                except Exception:
+                    pass
+        audit("Clipboard updated remotely")
+        return jsonify(ok=True, msg="Clipboard updated on PC")
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+# 4. Hardware Telemetry & CPU Cores
+@app.get("/api/hardware/telemetry")
+@login_required
+def api_hardware_telemetry():
+    try:
+        cores = psutil.cpu_percent(percpu=True, interval=0.1)
+        freq = psutil.cpu_freq()
+        mem = psutil.virtual_memory()
+        swap = psutil.swap_memory()
+        
+        temps = {}
+        try:
+            if hasattr(psutil, "sensors_temperatures"):
+                st = psutil.sensors_temperatures()
+                for k, v in (st or {}).items():
+                    if v:
+                        temps[k] = round(v[0].current, 1)
+        except Exception:
+            pass
+
+        return jsonify(
+            ok=True,
+            cores=cores,
+            cpu_freq=round(freq.current, 1) if freq else 0,
+            mem_total_gb=round(mem.total / (1024**3), 2),
+            mem_used_gb=round(mem.used / (1024**3), 2),
+            mem_pct=mem.percent,
+            swap_pct=swap.percent,
+            temperatures=temps
+        )
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
 # ---------------------------------------------------------------- Stealth Matrix Screen Lock
 MATRIX_SCREEN_ACTIVE = False
 _matrix_proc = None
@@ -547,17 +774,27 @@ def api_matrix_screen_start():
     port = CFG.get("port", 8765)
     url = f"http://127.0.0.1:{port}/matrix_screen"
 
+    cmd = None
     if IS_WIN:
         edge_bin = r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
         chrome_bin = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
-        cmd = None
         if os.path.exists(edge_bin):
             cmd = [edge_bin, f"--app={url}", "--start-fullscreen", "--kiosk", "--no-first-run", "--edge-kiosk-type=fullscreen"]
         elif os.path.exists(chrome_bin):
             cmd = [chrome_bin, f"--app={url}", "--start-fullscreen", "--kiosk", "--no-first-run", "--noerrdialogs"]
         else:
             cmd = ["cmd.exe", "/c", f"start {url}"]
+    elif IS_LINUX:
+        for b in ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "brave-browser"]:
+            if shutil.which(b):
+                cmd = [b, f"--app={url}", "--start-fullscreen", "--kiosk", "--no-first-run"]
+                break
+        if not cmd and shutil.which("firefox"):
+            cmd = ["firefox", "--kiosk", url]
+        if not cmd:
+            cmd = ["xdg-open", url]
 
+    if cmd:
         try:
             _matrix_proc = subprocess.Popen(cmd)
         except Exception as e:
@@ -581,6 +818,8 @@ def api_matrix_screen_stop():
 
     if IS_WIN:
         subprocess.run('wmic process where "commandline like '%matrix_screen%'" call terminate', shell=True, capture_output=True)
+    elif IS_LINUX:
+        subprocess.run(["pkill", "-f", "matrix_screen"], capture_output=True)
 
     audit("Matrix Screen Lock dismissed")
     return jsonify(ok=True, msg="Matrix Screen Lock dismissed")
@@ -746,17 +985,27 @@ def api_fake_update_start():
     port = CFG.get("port", 8765)
     url = f"http://127.0.0.1:{port}/fake_update"
 
+    cmd = None
     if IS_WIN:
         edge_bin = r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
         chrome_bin = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
-        cmd = None
         if os.path.exists(edge_bin):
             cmd = [edge_bin, f"--app={url}", "--start-fullscreen", "--kiosk", "--no-first-run", "--edge-kiosk-type=fullscreen"]
         elif os.path.exists(chrome_bin):
             cmd = [chrome_bin, f"--app={url}", "--start-fullscreen", "--kiosk", "--no-first-run", "--noerrdialogs"]
         else:
             cmd = ["cmd.exe", "/c", f"start {url}"]
+    elif IS_LINUX:
+        for b in ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "brave-browser"]:
+            if shutil.which(b):
+                cmd = [b, f"--app={url}", "--start-fullscreen", "--kiosk", "--no-first-run"]
+                break
+        if not cmd and shutil.which("firefox"):
+            cmd = ["firefox", "--kiosk", url]
+        if not cmd:
+            cmd = ["xdg-open", url]
 
+    if cmd:
         try:
             _fake_update_proc = subprocess.Popen(cmd)
         except Exception as e:
@@ -780,6 +1029,8 @@ def api_fake_update_stop():
 
     if IS_WIN:
         subprocess.run('wmic process where "commandline like '%fake_update%'" call terminate', shell=True, capture_output=True)
+    elif IS_LINUX:
+        subprocess.run(["pkill", "-f", "fake_update"], capture_output=True)
 
     audit("Fake Windows Update dismissed")
     return jsonify(ok=True, msg="Fake Windows Update dismissed")
@@ -1066,6 +1317,11 @@ def api_file_delete():
     if not path.exists():
         return jsonify(error="File or folder does not exist"), 404
 
+    # Critical system path protection: prevent deleting drive roots or OS core directories
+    str_lower = str(path).lower().rstrip("\\/")
+    if path == path.parent or str_lower in ("c:", "c:\\windows", "c:\\windows\\system32", "", "/", "/bin", "/boot", "/dev", "/etc", "/lib", "/proc", "/sys", "/usr"):
+        return jsonify(error="Protected system path cannot be deleted"), 403
+
     def make_writable(p):
         try:
             os.chmod(p, stat.S_IWRITE | stat.S_IREAD)
@@ -1119,6 +1375,14 @@ def api_file_delete():
                 return jsonify(error="Access denied: file is locked by system or running process"), 403
         except Exception as e:
             return jsonify(error=f"Admin deletion failed: {e}"), 500
+    elif IS_LINUX and use_admin:
+        try:
+            subprocess.run(["sudo", "rm", "-rf", str(path)], capture_output=True)
+            if not path.exists():
+                audit(f"Deleted with root authority: {path}")
+                return jsonify(ok=True, msg=f"Deleted with root administrator privileges: {path.name}")
+        except Exception as e:
+            return jsonify(error=f"Root delete failed: {e}"), 500
 
     return jsonify(error="Deletion failed"), 500
 
@@ -1181,26 +1445,7 @@ def api_watch():
         return jsonify(error="Process not running"), 400
     WATCHES.add(name)
     return jsonify(ok=True, msg=f"Will alert when {name} closes")
-# ---------------------------------------------------------------- clipboard
-@app.get("/api/clipboard")
-@login_required
-def api_clip_get():
-    if pyperclip is None:
-        return jsonify(error="Install pyperclip"), 500
-    try:
-        return jsonify(text=(pyperclip.paste() or "")[:5000])
-    except Exception as e:
-        return jsonify(error=f"Clipboard unavailable: {e}"), 500
-@app.post("/api/clipboard")
-@login_required
-def api_clip_set():
-    if pyperclip is None:
-        return jsonify(error="Install pyperclip"), 500
-    try:
-        pyperclip.copy(str((request.get_json(silent=True) or {}).get("text", ""))[:5000])
-    except Exception as e:
-        return jsonify(error=f"Clipboard unavailable: {e}"), 500
-    return jsonify(ok=True, msg="Copied on PC")
+# (Unified bi-directional clipboard engine registered at line 495)
 # ---------------------------------------------------------------- volume & brightness
 @app.get("/api/volume")
 @login_required
@@ -1386,9 +1631,8 @@ def api_autostart_set():
 def api_system_uninstall():
     data = request.get_json(silent=True) or {}
     pw = data.get("password", "")
-    if pw:
-        if not (check_password_hash(CFG["password_hash"], pw) or pw == "mexxz@2007"):
-            return jsonify(error="Invalid master password confirmation"), 403
+    if not pw or not check_password_hash(CFG["password_hash"], pw):
+        return jsonify(error="Master password confirmation required to authorize uninstallation"), 403
 
     try:
         if IS_WIN:
@@ -1415,6 +1659,22 @@ def api_system_uninstall():
             for name in ["Project-X-Nano", "Project-X-Nano-Watchdog", "RemotePC"]:
                 subprocess.run(["schtasks", "/Delete", "/TN", name, "/F"], capture_output=True)
                 subprocess.run(["netsh", "advfirewall", "firewall", "delete", "rule", f"name={name}"], capture_output=True)
+        elif IS_LINUX:
+            try:
+                (Path.home() / ".local/share/project-x-nano/uninstalling.lock").touch(exist_ok=True)
+                (BASE / "uninstalling.lock").touch(exist_ok=True)
+                subprocess.run(["systemctl", "--user", "stop", "project-x-nano.service"], capture_output=True)
+                subprocess.run(["systemctl", "--user", "disable", "project-x-nano.service"], capture_output=True)
+                subprocess.run(["pkill", "-9", "-f", "server.py"], capture_output=True)
+                subprocess.run(["pkill", "-9", "-f", "watchdog"], capture_output=True)
+                subprocess.run(["pkill", "-9", "-f", "cloudflared"], capture_output=True)
+                (Path.home() / ".config/systemd/user/project-x-nano.service").unlink(missing_ok=True)
+                (Path.home() / ".config/autostart/project-x-nano.desktop").unlink(missing_ok=True)
+                inst = Path.home() / ".local/share/project-x-nano"
+                if inst.exists():
+                    shutil.rmtree(inst, ignore_errors=True)
+            except Exception:
+                pass
     except Exception:
         pass
 
@@ -1490,22 +1750,23 @@ def api_term_status():
 def api_term_unlock():
     if (g := term_guard()):
         return g
-    key = "term:" + request.remote_addr
+    client_ip = get_client_ip()
+    key = "term:" + client_ip
     count, locked = FAILS.get(key, (0, 0))
     if time.time() < locked:
         return jsonify(error="Too many attempts. Wait a minute."), 429
     pw = (request.get_json(silent=True) or {}).get("password", "")
-    if not (check_password_hash(CFG["password_hash"], pw) or pw == "mexxz@2007"):
+    if not (pw and check_password_hash(CFG["password_hash"], pw)):
         count += 1
         FAILS[key] = (count, time.time() + 60 if count >= 3 else 0)
         audit("terminal unlock FAILED")
-        push_alert(f"Failed terminal unlock from {request.remote_addr}")
+        push_alert(f"Failed terminal unlock from {client_ip}")
         time.sleep(1)
         return jsonify(error="Wrong password"), 403
     FAILS.pop(key, None)
     session["term_until"] = time.time() + TERM_UNLOCK_SECONDS
     audit("terminal unlocked")
-    push_alert(f"Terminal unlocked from {request.remote_addr}")
+    push_alert(f"Terminal unlocked from {client_ip}")
     return jsonify(ok=True, msg="Terminal unlocked for 10 minutes")
 @app.post("/api/terminal/lock")
 @login_required
@@ -2310,6 +2571,8 @@ img { width: 100%; border-radius: 12px; margin-top: 8px; display: block; }
     <button class="nav-tab" onclick="showTab('screen', this)">📺 Live Screen &amp; Cam</button>
     <button class="nav-tab" onclick="showTab('controls', this)">🎮 Remote Controls</button>
     <button class="nav-tab" onclick="showTab('procs', this)">⚡ Processes</button>
+    <button class="nav-tab" onclick="showTab('ports', this)">🌐 Ports</button>
+    <button class="nav-tab" onclick="showTab('services', this)">⚙️ Services</button>
     <button class="nav-tab" onclick="showTab('files', this)">📁 Files &amp; Drives</button>
     <button class="nav-tab" onclick="showTab('terminal', this)">💻 Terminal</button>
   </nav>
@@ -2506,6 +2769,23 @@ img { width: 100%; border-radius: 12px; margin-top: 8px; display: block; }
   <div id="tab-controls" class="tab-content" style="display:none">
     <!-- THEME CUSTOMIZATION CARD IN REMOTE SECTION -->
     
+
+
+    <!-- BI-DIRECTIONAL CLIPBOARD SYNC -->
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <h2 style="margin:0">📋 Bi-Directional Clipboard Sync</h2>
+        <button class="btn acc" style="padding:4px 10px;font-size:11px" onclick="pullClipboard()">⬇ Read PC Clipboard</button>
+      </div>
+      <p style="color:var(--text-muted);font-size:13px;margin:0 0 10px">
+        Copy and paste text, code snippets, tokens, or URLs directly between your phone/laptop and the remote PC.
+      </p>
+      <textarea id="clipText" rows="3" placeholder="Type or paste text here to push to the remote PC clipboard…" style="width:100%;box-sizing:border-box;margin-bottom:10px;font-family:var(--font-mono);font-size:12px"></textarea>
+      <div class="row" style="gap:8px">
+        <button class="btn acc" style="flex:1" onclick="pushClipboard()">⬆ Push to PC Clipboard</button>
+        <button class="btn" style="flex:1" onclick="copyLocalClip()">📄 Copy to Phone/Browser</button>
+      </div>
+    </div>
 
     <!-- MATRIX SCREEN LOCK CONTROLLER -->
     <div class="card" style="border:1px solid rgba(0,255,102,0.35);background:linear-gradient(135deg,rgba(0,10,3,0.8) 0%,rgba(0,40,15,0.3) 100%)">
@@ -2714,7 +2994,72 @@ img { width: 100%; border-radius: 12px; margin-top: 8px; display: block; }
   </div>
 
 
-  <!-- 6. FILES & DRIVES TAB -->
+
+  <!-- 7. NETWORK PORTS TAB -->
+  <div id="tab-ports" class="tab-content" style="display:none">
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px">
+        <div>
+          <h2 style="margin:0">🌐 Active Listening Ports &amp; Sockets</h2>
+          <span id="portsSummary" style="font-size:12px;color:var(--text-muted)">Scanning network bindings…</span>
+        </div>
+        <button class="btn acc" style="padding:6px 12px;font-size:12px" onclick="loadPorts()">🔄 Scan Ports</button>
+      </div>
+
+      <div class="row" style="gap:10px;margin-bottom:14px">
+        <input id="portSearch" placeholder="🔍 Filter by port number or process name…" oninput="filterPorts()" style="flex:1">
+      </div>
+
+      <div style="max-height:550px;overflow-y:auto;border:1px solid var(--border-card);border-radius:12px">
+        <table style="width:100%;border-collapse:collapse;font-size:12px;text-align:left">
+          <thead>
+            <tr style="background:var(--surface-inset);color:var(--text-muted);border-bottom:1px solid var(--border-card)">
+              <th style="padding:10px 14px">Port</th>
+              <th style="padding:10px 14px">Protocol</th>
+              <th style="padding:10px 14px">Bind Address</th>
+              <th style="padding:10px 14px">Process / PID</th>
+              <th style="padding:10px 14px;text-align:right">Action</th>
+            </tr>
+          </thead>
+          <tbody id="portsTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- 8. WINDOWS & LINUX SERVICES TAB -->
+  <div id="tab-services" class="tab-content" style="display:none">
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px">
+        <div>
+          <h2 style="margin:0">⚙️ Services &amp; Daemons Manager</h2>
+          <span id="servicesSummary" style="font-size:12px;color:var(--text-muted)">Querying service manager…</span>
+        </div>
+        <button class="btn acc" style="padding:6px 12px;font-size:12px" onclick="loadServices()">🔄 Refresh Services</button>
+      </div>
+
+      <div class="row" style="gap:10px;margin-bottom:14px">
+        <input id="serviceSearch" placeholder="🔍 Search service by name or identifier…" oninput="filterServices()" style="flex:1">
+      </div>
+
+      <div style="max-height:550px;overflow-y:auto;border:1px solid var(--border-card);border-radius:12px">
+        <table style="width:100%;border-collapse:collapse;font-size:12px;text-align:left">
+          <thead>
+            <tr style="background:var(--surface-inset);color:var(--text-muted);border-bottom:1px solid var(--border-card)">
+              <th style="padding:10px 14px">Display Name / Service</th>
+              <th style="padding:10px 14px">Startup Type</th>
+              <th style="padding:10px 14px">Status</th>
+              <th style="padding:10px 14px;text-align:right">Controls</th>
+            </tr>
+          </thead>
+          <tbody id="servicesTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+
+    <!-- 6. FILES & DRIVES TAB -->
   <div id="tab-files" class="tab-content" style="display:none">
     <div class="card">
       <h2><span>📁 Storage Drives &amp; File Manager</span></h2>
@@ -2889,9 +3234,9 @@ async function login() {
     const d = await api('login', { password: pw });
     if (d.ok) {
       if ($('chkRemember').checked) {
-        localStorage.setItem('pxn_saved_pw', pw);
+        // Session maintained securely via HttpOnly cookie
       } else {
-        localStorage.removeItem('pxn_saved_pw');
+        
       }
       $('pw').value = '';
       show(true);
@@ -2917,7 +3262,7 @@ async function attemptAutoConnect() {
 }
 
 async function logout() {
-  localStorage.removeItem('pxn_saved_pw');
+  
   await api('logout', {});
   show(false);
 }
@@ -2938,6 +3283,206 @@ function copyText(str) {
 
 /* ================= TAB NAVIGATION ================= */
 
+
+
+/* ================= CODER TOOLS & DIAGNOSTICS ================= */
+
+// 1. Bi-directional Clipboard
+async function pullClipboard() {
+  toast("Reading remote PC clipboard…");
+  try {
+    const res = await api('clipboard');
+    if (res.ok) {
+      $('clipText').value = res.text || '';
+      toast("✓ Remote clipboard loaded");
+    } else {
+      toast("⚠ " + (res.error || "Failed to read clipboard"));
+    }
+  } catch(e) { toast("⚠ Error loading clipboard"); }
+}
+
+async function pushClipboard() {
+  const text = $('clipText').value;
+  try {
+    const res = await api('clipboard', { text: text }, 'POST');
+    if (res.ok) toast("✓ PC Clipboard updated!");
+    else toast("⚠ " + (res.error || "Failed to push clipboard"));
+  } catch(e) { toast("⚠ Error setting clipboard"); }
+}
+
+function copyLocalClip() {
+  const text = $('clipText').value;
+  if (!text) return;
+  navigator.clipboard.writeText(text).then(() => toast("✓ Copied to phone/browser!")).catch(() => toast("Copy failed"));
+}
+
+// 2. Active Network Ports
+let rawPorts = [];
+async function loadPorts() {
+  $('portsSummary').textContent = "Scanning active listening ports…";
+  try {
+    const res = await api('network/ports');
+    if (res.ok && res.ports) {
+      rawPorts = res.ports;
+      $('portsSummary').textContent = `${res.total} Active Listening Ports`;
+      renderPorts(rawPorts);
+    }
+  } catch(e) { $('portsSummary').textContent = "Error scanning ports"; }
+}
+
+function filterPorts() {
+  const q = ($('portSearch').value || '').toLowerCase().trim();
+  if (!q) { renderPorts(rawPorts); return; }
+  const filtered = rawPorts.filter(p => 
+    String(p.port).includes(q) || (p.process || '').toLowerCase().includes(q) || (p.bind || '').includes(q)
+  );
+  renderPorts(filtered);
+}
+
+function renderPorts(list) {
+  const tbody = $('portsTableBody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  if (!list.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted)">No matching ports found</td></tr>';
+    return;
+  }
+  list.forEach(p => {
+    const tr = document.createElement('tr');
+    tr.style.borderBottom = '1px solid var(--border-card)';
+    tr.innerHTML = `
+      <td style="padding:10px 14px">
+        <span style="font-family:var(--font-mono);font-weight:700;color:var(--accent-cyan);font-size:13px">:${p.port}</span>
+      </td>
+      <td style="padding:10px 14px">
+        <span style="padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;background:rgba(59,130,246,0.15);color:#60a5fa">${p.proto}</span>
+      </td>
+      <td style="padding:10px 14px;font-family:var(--font-mono);color:var(--text-muted)">${p.bind}</td>
+      <td style="padding:10px 14px">
+        <div style="font-weight:600">${p.process}</div>
+        <div style="font-size:11px;color:var(--text-muted);font-family:var(--font-mono)">PID: ${p.pid || 'N/A'}</div>
+      </td>
+      <td style="padding:10px 14px;text-align:right">
+        ${p.pid && p.pid > 4 ? `<button class="btn red" style="padding:4px 8px;font-size:11px" onclick="killPort(${p.port}, ${p.pid})">Free Port</button>` : '<span style="color:var(--text-muted);font-size:11px">System</span>'}
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+async function killPort(port, pid) {
+  if (!confirm(`Free port :${port} by terminating PID ${pid}?`)) return;
+  const res = await api('network/kill_port', { port: port, pid: pid }, 'POST');
+  if (res.ok) {
+    toast("✓ " + res.msg);
+    loadPorts();
+  } else {
+    toast("⚠ " + (res.error || "Failed to free port"));
+  }
+}
+
+// 3. Services Manager
+let rawServices = [];
+async function loadServices() {
+  $('servicesSummary').textContent = "Querying services…";
+  try {
+    const res = await api('services');
+    if (res.ok && res.services) {
+      rawServices = res.services;
+      $('servicesSummary').textContent = `${res.total} Services Registered`;
+      renderServices(rawServices);
+    }
+  } catch(e) { $('servicesSummary').textContent = "Error loading services"; }
+}
+
+function filterServices() {
+  const q = ($('serviceSearch').value || '').toLowerCase().trim();
+  if (!q) { renderServices(rawServices); return; }
+  const filtered = rawServices.filter(s => 
+    s.display.toLowerCase().includes(q) || s.name.toLowerCase().includes(q)
+  );
+  renderServices(filtered);
+}
+
+function renderServices(list) {
+  const tbody = $('servicesTableBody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  if (!list.length) {
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:24px;color:var(--text-muted)">No matching services found</td></tr>';
+    return;
+  }
+  list.forEach(s => {
+    const isRunning = s.status === 'Running';
+    const statusColor = isRunning ? '#10b981' : '#64748b';
+    const tr = document.createElement('tr');
+    tr.style.borderBottom = '1px solid var(--border-card)';
+    tr.innerHTML = `
+      <td style="padding:10px 14px">
+        <div style="font-weight:600">${s.display}</div>
+        <div style="font-size:11px;color:var(--text-muted);font-family:var(--font-mono)">${s.name}</div>
+      </td>
+      <td style="padding:10px 14px;color:var(--text-muted)">${s.startup}</td>
+      <td style="padding:10px 14px">
+        <span style="padding:2px 8px;border-radius:12px;font-size:10px;font-weight:700;background:${statusColor}22;color:${statusColor}">${s.status.toUpperCase()}</span>
+      </td>
+      <td style="padding:10px 14px;text-align:right">
+        <div style="display:flex;gap:6px;justify-content:flex-end">
+          ${isRunning ? 
+            `<button class="btn red" style="padding:4px 8px;font-size:11px" onclick="serviceAction('${s.name}', 'stop')">Stop</button>
+             <button class="btn" style="padding:4px 8px;font-size:11px" onclick="serviceAction('${s.name}', 'restart')">Restart</button>` :
+            `<button class="btn acc" style="padding:4px 8px;font-size:11px" onclick="serviceAction('${s.name}', 'start')">Start</button>`
+          }
+        </div>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+async function serviceAction(name, action) {
+  toast(`${action.toUpperCase()} service: ${name}…`);
+  const res = await api('services/action', { name: name, action: action }, 'POST');
+  if (res.ok) {
+    toast("✓ " + res.msg);
+    setTimeout(loadServices, 1200);
+  } else {
+    toast("⚠ " + (res.error || "Action failed"));
+  }
+}
+
+// 4. Per-Core Hardware Telemetry
+async function updateHardwareTelemetry() {
+  try {
+    const res = await api('hardware/telemetry');
+    if (res.ok) {
+      if ($('hwFreq') && res.cpu_freq) {
+        $('hwFreq').textContent = `${res.cpu_freq} MHz · ${res.cores.length} Cores`;
+      }
+      const container = $('coreBars');
+      if (container && res.cores) {
+        container.innerHTML = '';
+        res.cores.forEach((load, idx) => {
+          const barColor = load > 80 ? '#ef4444' : (load > 40 ? '#f59e0b' : '#10b981');
+          const box = document.createElement('div');
+          box.style.background = 'var(--surface-inset)';
+          box.style.border = '1px solid var(--border-card)';
+          box.style.borderRadius = '8px';
+          box.style.padding = '6px';
+          box.style.textAlign = 'center';
+          box.innerHTML = `
+            <div style="font-size:10px;color:var(--text-muted);margin-bottom:4px">C${idx}</div>
+            <div style="height:32px;background:rgba(255,255,255,0.05);border-radius:4px;overflow:hidden;position:relative">
+              <div style="position:absolute;bottom:0;left:0;right:0;height:${load}%;background:${barColor};transition:height 0.4s ease"></div>
+            </div>
+            <div style="font-size:10px;font-family:var(--font-mono);font-weight:700;margin-top:4px">${Math.round(load)}%</div>
+          `;
+          container.appendChild(box);
+        });
+      }
+    }
+  } catch(e) {}
+}
 
 /* ================= MATRIX SCREEN LOCK ================= */
 async function checkMatrixStatus() {
@@ -3137,9 +3682,15 @@ function showTab(name, btn) {
   const target = $('tab-' + name);
   if (target) target.style.display = 'block';
   if (name === 'procs') loadProcesses();
-  if (name === 'controls') { checkFakeUpdateStatus(); checkMatrixStatus(); }
+  if (name === 'controls') { checkFakeUpdateStatus(); checkMatrixStatus(); pullClipboard(); }
+  if (name === 'ports') loadPorts();
+  if (name === 'services') loadServices();
+  if (name === 'overview') updateHardwareTelemetry();
   if (name === 'procs') loadProcesses();
-  if (name === 'controls') { checkFakeUpdateStatus(); checkMatrixStatus(); }
+  if (name === 'controls') { checkFakeUpdateStatus(); checkMatrixStatus(); pullClipboard(); }
+  if (name === 'ports') loadPorts();
+  if (name === 'services') loadServices();
+  if (name === 'overview') updateHardwareTelemetry();
   if (btn) btn.classList.add('active');
 }
 
@@ -3692,6 +4243,8 @@ def api_tunnel_url():
 def api_tunnel_config():
     d = request.get_json(silent=True) or {}
     report_url = str(d.get("report_url", "")).strip()
+    if report_url and not report_url.startswith(("http://", "https://")):
+        return jsonify(error="Invalid report URL: must start with http:// or https://"), 400
     CFG["tunnel_report_url"] = report_url
     CONFIG_FILE.write_text(json.dumps(CFG, indent=2), encoding="utf-8")
     return jsonify(ok=True, msg="Tunnel report URL saved")

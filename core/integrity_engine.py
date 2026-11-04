@@ -14,10 +14,26 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Dict, List, Tuple
 
+import platform
+
 GITHUB_RAW_BASE = "https://raw.githubusercontent.com/mexxz-01/Project-x-alpha/main"
 GITHUB_API_COMMITS = "https://api.github.com/repos/mexxz-01/Project-x-alpha/commits/main"
-CLOUDFLARED_URL = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe"
 EXE_URL = "https://github.com/mexxz-01/Project-x-alpha/raw/main/dist/Project-X-Nano.exe"
+
+IS_WIN = platform.system() == "Windows"
+ARCH = platform.machine().lower()
+
+if IS_WIN:
+    CLOUDFLARED_BIN = "cloudflared.exe"
+    CLOUDFLARED_URL = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe"
+else:
+    CLOUDFLARED_BIN = "cloudflared"
+    if "aarch64" in ARCH or "arm64" in ARCH:
+        CLOUDFLARED_URL = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64"
+    elif "arm" in ARCH:
+        CLOUDFLARED_URL = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm"
+    else:
+        CLOUDFLARED_URL = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64"
 
 # List of critical runtime dependencies (relative path -> remote url)
 CRITICAL_FILES = [
@@ -41,9 +57,12 @@ CRITICAL_FILES = [
     ("native/build_native.bat", f"{GITHUB_RAW_BASE}/native/build_native.bat"),
     ("watchdog.ps1", f"{GITHUB_RAW_BASE}/watchdog.ps1"),
     ("watchdog.py", f"{GITHUB_RAW_BASE}/watchdog.py"),
+    ("watchdog.sh", f"{GITHUB_RAW_BASE}/watchdog.sh"),
     ("install_agent.bat", f"{GITHUB_RAW_BASE}/install_agent.bat"),
     ("uninstall.bat", f"{GITHUB_RAW_BASE}/uninstall.bat"),
+    ("uninstall.sh", f"{GITHUB_RAW_BASE}/uninstall.sh"),
     ("setup.ps1", f"{GITHUB_RAW_BASE}/setup.ps1"),
+    ("setup.sh", f"{GITHUB_RAW_BASE}/setup.sh"),
 ]
 
 
@@ -64,9 +83,9 @@ class IntegrityEngine:
                 missing.append((rel_path, remote_url))
 
         # Check Cloudflare binary
-        cloudflared = self.base_dir / "cloudflared.exe"
+        cloudflared = self.base_dir / CLOUDFLARED_BIN
         if not cloudflared.exists() or cloudflared.stat().st_size < 10000000:
-            missing.append(("cloudflared.exe", CLOUDFLARED_URL))
+            missing.append((CLOUDFLARED_BIN, CLOUDFLARED_URL))
 
         return missing
 
@@ -84,6 +103,11 @@ class IntegrityEngine:
             if len(data) > 0:
                 with open(dest, "wb") as f:
                     f.write(data)
+                if not IS_WIN and (dest.suffix == ".sh" or dest.name == "cloudflared"):
+                    try:
+                        os.chmod(dest, 0o755)
+                    except Exception:
+                        pass
                 return True
         except Exception as e:
             print(f"[Integrity] Error downloading {rel_path}: {e}")
@@ -180,8 +204,9 @@ class IntegrityEngine:
         latest_sha = self.get_latest_github_commit()
 
         updated_files = []
+        files_to_update = [f for f in CRITICAL_FILES if f[0] != "config.json"]
         with ThreadPoolExecutor(max_workers=5) as pool:
-            futures = {pool.submit(self.download_file, rel, url): rel for rel, url in CRITICAL_FILES}
+            futures = {pool.submit(self.download_file, rel, url): rel for rel, url in files_to_update}
             for fut in futures:
                 rel = futures[fut]
                 try:

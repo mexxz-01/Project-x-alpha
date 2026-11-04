@@ -44,6 +44,12 @@ try:
 except Exception:
     pyperclip = None
 import sys
+import base64
+import jwt
+import pyotp
+import qrcode
+import crypto
+import audit as audit_module
 # High-performance Native C / C++ acceleration core
 from core.native_bridge import NativeBridge
 from core.screen_engine import ScreenEngine
@@ -68,6 +74,11 @@ DEFAULT_CONFIG = {
     "host": "0.0.0.0",  # use 127.0.0.1 to allow only this PC
     "password_hash": "scrypt:32768:8:1$EjrTHKvILpxhnGnv$7ef5a05c213ed971a60e2b27c9e19da0e8806bfd60629f39e468943005f1ea9c36c02c86e9d65a19b59b57927a9b763ef3b8f77d2dff37710050b722f4755091",
     "secret_key": "",
+    "totp_secret": "",
+    "totp_enabled": False,
+    "registered_devices": [],
+    "lan_opt_in": False,
+    "ngrok_token": "2wCjLZ216UtiwlN4zYgnBP0u4MZ_3EYqNLgFc4xWCNg2vYPQ",
     # Folders the file browser may access. Empty = your home folder only.
     "file_roots": [],
     # Phone alerts even when the page is closed: pick a secret topic name, install the
@@ -101,11 +112,19 @@ DEFAULT_CONFIG = {
     "tunnel_report_url": "",
 }
 # ---------------------------------------------------------------- config
+def save_cfg():
+    try:
+        crypto.save_encrypted_config(CFG, CONFIG_FILE)
+    except Exception as e:
+        print(f"[Config] Save error: {e}")
+
 def load_config():
     cfg = dict(DEFAULT_CONFIG)
     if CONFIG_FILE.exists():
         try:
-            cfg.update(json.loads(CONFIG_FILE.read_text()))
+            loaded = crypto.load_encrypted_config(CONFIG_FILE)
+            if loaded:
+                cfg.update(loaded)
         except Exception:
             pass
     first_run_password = None
@@ -117,10 +136,10 @@ def load_config():
         cfg["ntfy_topic"] = os.environ["NTFY_TOPIC"]
     if not cfg.get("password_hash"):
         cfg["password_hash"] = DEFAULT_CONFIG["password_hash"]
-    if not cfg["secret_key"]:
+    if not cfg.get("secret_key"):
         cfg["secret_key"] = secrets.token_hex(32)
     try:
-        CONFIG_FILE.write_text(json.dumps(cfg, indent=2))
+        crypto.save_encrypted_config(cfg, CONFIG_FILE)
     except Exception:
         pass
     return cfg, first_run_password
@@ -187,40 +206,281 @@ def background_auto_updater():
 
 threading.Thread(target=background_auto_updater, daemon=True).start()
 
-# ---------------------------------------------------------------- auth
+# ---------------------------------------------------------------- auth & session management
 FAILS = {}  # ip -> (count, locked_until)
+DEVICE_LOCK = threading.Lock()
+
+def create_jwt_token(device_id: str) -> str:
+    payload = {
+        "device_id": device_id,
+        "exp": int(time.time()) + 3600,  # 1 hour expiry
+        "iat": int(time.time()),
+    }
+    return jwt.encode(payload, CFG["secret_key"], algorithm="HS256")
+
+def verify_jwt_token(token: str):
+    try:
+        payload = jwt.decode(token, CFG["secret_key"], algorithms=["HS256"])
+        device_id = payload.get("device_id")
+        if not device_id:
+            return None
+        devices = CFG.get("registered_devices", [])
+        for d in devices:
+            if d.get("id") == device_id:
+                if d.get("revoked", False):
+                    return None
+                d["last_active"] = time.strftime("%Y-%m-%d %H:%M:%S")
+                return payload
+        return payload
+    except Exception:
+        return None
+
 def login_required(fn):
     @wraps(fn)
     def wrapper(*a, **kw):
-        if not session.get("ok"):
-            return jsonify(error="Not logged in"), 401
-        return fn(*a, **kw)
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:].strip()
+            payload = verify_jwt_token(token)
+            if payload:
+                request.device_id = payload.get("device_id")
+                return fn(*a, **kw)
+        if session.get("ok"):
+            device_id = session.get("device_id")
+            if device_id:
+                for d in CFG.get("registered_devices", []):
+                    if d.get("id") == device_id and d.get("revoked", False):
+                        session.clear()
+                        return jsonify(error="Session revoked by administrator"), 401
+            return fn(*a, **kw)
+        return jsonify(error="Not logged in"), 401
     return wrapper
+
 @app.post("/login")
 @app.post("/api/login")
 def login():
     ip = get_client_ip()
     count, locked = FAILS.get(ip, (0, 0))
     if time.time() < locked:
-        return jsonify(error="Too many attempts. Wait a minute."), 429
-    pw = (request.get_json(silent=True) or {}).get("password", "")
-    if pw and check_password_hash(CFG["password_hash"], pw):
-        FAILS.pop(ip, None)
-        session["ok"] = True
-        session.permanent = True
-        push_alert(f"New login from {ip}")
-        return jsonify(ok=True)
-    count += 1
-    if count >= 3:
-        push_alert(f"{count} failed login attempts from {ip}")
-    FAILS[ip] = (count, time.time() + 60 if count >= 5 else 0)
-    time.sleep(1)
-    return jsonify(error="Wrong password"), 403
+        remaining = int(locked - time.time())
+        audit("Login rejected: rate-limit lockout active", {"ip": ip, "remaining_seconds": remaining})
+        return jsonify(error=f"Too many attempts. Locked out for {remaining}s."), 429
+
+    data = request.get_json(silent=True) or {}
+    pw = data.get("password", "")
+    totp_code = str(data.get("totp_code", "")).strip()
+    device_name = str(data.get("device_name", "Remote Client")).strip() or "Remote Client"
+    device_id = str(data.get("device_id", "")).strip() or secrets.token_hex(8)
+
+    if not pw or not check_password_hash(CFG["password_hash"], pw):
+        count += 1
+        lockout = 0
+        if count >= 6:
+            lockout = time.time() + 600
+        elif count >= 4:
+            lockout = time.time() + 120
+        elif count >= 3:
+            lockout = time.time() + 30
+        FAILS[ip] = (count, lockout)
+        push_alert(f"{count} failed login attempt(s) from {ip}")
+        audit("login FAILED: bad password", {"attempts": count})
+        time.sleep(1)
+        return jsonify(error="Wrong password"), 403
+
+    if CFG.get("totp_enabled") and CFG.get("totp_secret"):
+        if not totp_code:
+            return jsonify(totp_required=True, msg="2FA TOTP code required to complete login")
+        totp = pyotp.TOTP(CFG["totp_secret"])
+        if not totp.verify(totp_code, valid_window=1):
+            count += 1
+            FAILS[ip] = (count, time.time() + 60 if count >= 3 else 0)
+            audit("login FAILED: invalid TOTP 2FA code", {"ip": ip})
+            return jsonify(error="Invalid 2FA authentication code"), 403
+
+    FAILS.pop(ip, None)
+    session["ok"] = True
+    session["device_id"] = device_id
+    session.permanent = True
+
+    with DEVICE_LOCK:
+        devices = CFG.setdefault("registered_devices", [])
+        existing = next((d for d in devices if d.get("id") == device_id), None)
+        if existing:
+            existing["name"] = device_name
+            existing["last_ip"] = ip
+            existing["last_active"] = time.strftime("%Y-%m-%d %H:%M:%S")
+            existing["revoked"] = False
+        else:
+            devices.append({
+                "id": device_id,
+                "name": device_name,
+                "first_seen": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "last_active": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "last_ip": ip,
+                "revoked": False,
+            })
+        save_cfg()
+
+    token = create_jwt_token(device_id)
+    push_alert(f"New authenticated login from {ip} ({device_name})")
+    audit("login SUCCESS", {"device_id": device_id, "device_name": device_name})
+    return jsonify(ok=True, token=token, device_id=device_id)
+
 @app.post("/logout")
 @app.post("/api/logout")
 def logout():
     session.clear()
     return jsonify(ok=True)
+
+# ---------------------------------------------------------------- 2FA TOTP Endpoints
+@app.get("/api/2fa/status")
+@login_required
+def api_2fa_status():
+    return jsonify(enabled=bool(CFG.get("totp_enabled")), has_secret=bool(CFG.get("totp_secret")))
+
+@app.post("/api/2fa/enroll")
+@login_required
+def api_2fa_enroll():
+    secret = pyotp.random_base32()
+    session["pending_totp_secret"] = secret
+    hostname = socket.gethostname()
+    uri = pyotp.totp.TOTP(secret).provisioning_uri(name=f"Project-X-Nano ({hostname})", issuer_name="Project-X")
+    img = qrcode.make(uri)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    qr_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+    return jsonify(ok=True, secret=secret, qr_b64=qr_b64, otpauth=uri)
+
+@app.post("/api/2fa/confirm")
+@login_required
+def api_2fa_confirm():
+    d = request.get_json(silent=True) or {}
+    code = str(d.get("code", "")).strip()
+    secret = session.get("pending_totp_secret") or CFG.get("totp_secret")
+    if not secret:
+        return jsonify(error="No 2FA setup in progress"), 400
+    totp = pyotp.TOTP(secret)
+    if totp.verify(code, valid_window=1):
+        CFG["totp_secret"] = secret
+        CFG["totp_enabled"] = True
+        save_cfg()
+        session.pop("pending_totp_secret", None)
+        audit("2FA TOTP activated successfully")
+        return jsonify(ok=True, msg="Two-Factor Authentication (TOTP) successfully activated!")
+    return jsonify(error="Invalid verification code. Please check your authenticator app and try again."), 400
+
+@app.post("/api/2fa/disable")
+@login_required
+def api_2fa_disable():
+    d = request.get_json(silent=True) or {}
+    pw = d.get("password", "")
+    if not pw or not check_password_hash(CFG["password_hash"], pw):
+        return jsonify(error="Master password confirmation required"), 403
+    CFG["totp_enabled"] = False
+    CFG["totp_secret"] = ""
+    save_cfg()
+    audit("2FA TOTP disabled by user")
+    return jsonify(ok=True, msg="Two-Factor Authentication disabled")
+
+# ---------------------------------------------------------------- Device Session Revocation Endpoints
+@app.get("/api/devices")
+@login_required
+def api_devices_list():
+    return jsonify(ok=True, devices=CFG.get("registered_devices", []))
+
+@app.post("/api/devices/revoke")
+@login_required
+def api_devices_revoke():
+    d = request.get_json(silent=True) or {}
+    target_id = str(d.get("device_id", "")).strip()
+    if not target_id:
+        return jsonify(error="Device ID required"), 400
+    with DEVICE_LOCK:
+        devices = CFG.get("registered_devices", [])
+        for dev in devices:
+            if dev.get("id") == target_id:
+                dev["revoked"] = True
+                save_cfg()
+                audit("Device session revoked", {"revoked_device_id": target_id})
+                return jsonify(ok=True, msg=f"Device {dev.get('name', target_id)} revoked successfully")
+    return jsonify(error="Device not found"), 404
+
+# ---------------------------------------------------------------- Audit Log Viewer Endpoint
+@app.get("/api/audit/logs")
+@login_required
+def api_audit_logs():
+    log_file = BASE / "audit.log"
+    if not log_file.exists():
+        return jsonify(ok=True, logs=[])
+    try:
+        lines = log_file.read_text(encoding="utf-8").strip().splitlines()
+        logs = []
+        for line in lines[-200:]:
+            line = line.strip()
+            if not line:
+                continue
+            if line.startswith("{") and line.endswith("}"):
+                try:
+                    logs.append(json.loads(line))
+                    continue
+                except Exception:
+                    pass
+            logs.append({"timestamp": "", "action": line, "ip": "", "asn": ""})
+        logs.reverse()
+        return jsonify(ok=True, logs=logs)
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+# ---------------------------------------------------------------- Panic Wipe & Nuke Operations
+def perform_nuke():
+    print("[NUKE] Initiating PANIC WIPE sequence...")
+    try:
+        import tunnel
+        tunnel.stop_tunnel()
+    except Exception:
+        pass
+
+    if IS_WIN:
+        for rname in ["Project-X-Nano", "RemotePC"]:
+            subprocess.run(["netsh", "advfirewall", "firewall", "delete", "rule", f"name={rname}"], capture_output=True)
+
+    try:
+        (BASE / "uninstalling.lock").touch()
+        if IS_WIN:
+            subprocess.run(["powershell", "-NoProfile", "-Command", "Get-CimInstance Win32_Process -Filter \"CommandLine LIKE '%watchdog%'\" | Invoke-CimMethod -MethodName Terminate"], capture_output=True)
+    except Exception:
+        pass
+
+    if CONFIG_FILE.exists():
+        try:
+            CONFIG_FILE.write_bytes(os.urandom(2048))
+            CONFIG_FILE.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+    try:
+        (BASE / "public_url.txt").unlink(missing_ok=True)
+        (BASE / "audit.log").write_text("", encoding="utf-8")
+    except Exception:
+        pass
+
+    print("[NUKE] System credentials wiped, tunnel dropped, agent terminated.")
+
+@app.post("/api/panic/nuke")
+@login_required
+def api_panic_nuke():
+    d = request.get_json(silent=True) or {}
+    pw = d.get("password", "")
+    if not pw or not check_password_hash(CFG["password_hash"], pw):
+        audit("PANIC NUKE rejected: bad password confirmation")
+        return jsonify(error="Master password confirmation required to authorize emergency nuke"), 403
+    audit("PANIC NUKE INITIATED from remote client")
+    def _do_nuke():
+        time.sleep(1.0)
+        perform_nuke()
+        os._exit(0)
+    threading.Thread(target=_do_nuke, daemon=True).start()
+    return jsonify(ok=True, msg="PANIC WIPE ENGAGED: Tunnels dropped, credentials wiped, agent terminating immediately.")
 # ---------------------------------------------------------------- helpers
 def run(cmd, shell=False):
     subprocess.Popen(cmd, shell=shell, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -1725,9 +1985,12 @@ def is_admin():
         return os.geteuid() == 0
     except Exception:
         return False
-def audit(text):
-    with open(BASE / "audit.log", "a", encoding="utf-8") as f:
-        f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {request.remote_addr} {text}\n")
+def audit(text, details=None):
+    try:
+        ip = get_client_ip()
+    except Exception:
+        ip = "127.0.0.1"
+    audit_module.write_audit(BASE / "audit.log", ip, text, details=details)
 def term_guard():
     if not CFG.get("terminal_enabled"):
         return jsonify(error='Terminal is disabled. On the PC, set "terminal_enabled": true in config.json and restart.'), 403
@@ -1878,7 +2141,7 @@ def api_fleet_add():
             return jsonify(error="Device already in fleet"), 400
     node_id = secrets.token_hex(4)
     fleet.append({"id": node_id, "name": name, "url": url, "group": group})
-    CONFIG_FILE.write_text(json.dumps(CFG, indent=2))
+    save_cfg()
     return jsonify(ok=True, msg=f"Added '{name}' to fleet", id=node_id)
 @app.post("/api/fleet/remove")
 @login_required
@@ -1887,7 +2150,7 @@ def api_fleet_remove():
     node_id = str(d.get("id", "")).strip()
     fleet = CFG.get("fleet", [])
     CFG["fleet"] = [f for f in fleet if f.get("id") != node_id]
-    CONFIG_FILE.write_text(json.dumps(CFG, indent=2))
+    save_cfg()
     return jsonify(ok=True, msg="Removed from fleet")
 @app.post("/api/fleet/broadcast")
 @login_required
@@ -2513,6 +2776,11 @@ img { width: 100%; border-radius: 12px; margin-top: 8px; display: block; }
   </div>
   <input id="pw" type="password" placeholder="Enter Master Password" style="margin-bottom:12px;text-align:center">
   
+  <div id="login2faBox" style="display:none;margin-bottom:12px">
+    <div style="font-size:12px;color:var(--accent);margin-bottom:6px">🔐 2FA Enabled - Enter Authenticator Code:</div>
+    <input id="loginTotp" type="text" placeholder="6-digit code" maxlength="6" style="text-align:center;font-size:16px;letter-spacing:4px">
+  </div>
+
   <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:14px;font-size:12px;color:var(--text-muted)">
     <input type="checkbox" id="chkRemember" checked style="width:auto;margin:0;cursor:pointer">
     <label for="chkRemember" style="cursor:pointer">Remember &amp; Auto-Connect</label>
@@ -2575,6 +2843,7 @@ img { width: 100%; border-radius: 12px; margin-top: 8px; display: block; }
     <button class="nav-tab" onclick="showTab('services', this)">⚙️ Services</button>
     <button class="nav-tab" onclick="showTab('files', this)">📁 Files &amp; Drives</button>
     <button class="nav-tab" onclick="showTab('terminal', this)">💻 Terminal</button>
+    <button class="nav-tab" onclick="showTab('security', this)">🛡️ Security &amp; Audit</button>
   </nav>
 
   <!-- 1. OVERVIEW TAB -->
@@ -3074,6 +3343,70 @@ img { width: 100%; border-radius: 12px; margin-top: 8px; display: block; }
     </div>
   </div>
 
+  <!-- 8. SECURITY & AUDIT TAB -->
+  <div id="tab-security" class="tab-content" style="display:none">
+    <div class="card">
+      <h2><span>🛡️ Security Hardening &amp; Defense in Depth</span></h2>
+
+      <div class="stat-box" style="margin-bottom:16px">
+        <div class="stat-header">
+          <span>🔐 TOTP Two-Factor Authentication (2FA)</span>
+          <span id="totpStatusBadge" class="badge badge-green">Checking...</span>
+        </div>
+        <p style="color:var(--text-muted);font-size:13px;margin:8px 0 12px">
+          Require a 6-digit one-time code from Google Authenticator, Authy, or 1Password every time anyone attempts to log in.
+        </p>
+        <div id="totpSetupArea">
+          <button class="acc" onclick="start2FAEnroll()">📱 Set Up Authenticator 2FA</button>
+        </div>
+        <div id="totpActiveArea" style="display:none">
+          <button class="red" onclick="disable2FA()">Disable 2FA</button>
+        </div>
+
+        <div id="totpModal" style="display:none;margin-top:14px;background:var(--surface-inset);padding:16px;border-radius:14px;border:1px solid var(--border-card);text-align:center">
+          <div style="font-weight:700;margin-bottom:8px">Scan QR Code in Authenticator App</div>
+          <div id="totpQrContainer" style="margin:12px auto;display:inline-block;padding:8px;background:#fff;border-radius:8px"></div>
+          <div style="font-family:var(--font-mono);font-size:12px;margin-bottom:12px;word-break:break-all;color:var(--text-muted)">
+            Key: <span id="totpSecretText" style="color:var(--accent)"></span>
+          </div>
+          <div class="row" style="max-width:280px;margin:auto">
+            <input id="totpConfirmCode" placeholder="Enter 6-digit Code" maxlength="6" style="text-align:center;font-size:16px;letter-spacing:4px">
+            <button class="acc" onclick="confirm2FA()">Verify &amp; Enable</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="stat-box" style="margin-bottom:16px">
+        <div class="stat-header">
+          <span>📱 Connected Devices &amp; Revocable Sessions</span>
+          <button class="btn" style="padding:2px 8px;font-size:11px" onclick="loadDevices()">🔄 Refresh</button>
+        </div>
+        <p style="color:var(--text-muted);font-size:13px;margin:6px 0 10px">
+          JWT session tokens expire after 1 hour. Revoke untrusted or lost devices immediately.
+        </p>
+        <div id="deviceList" style="display:flex;flex-direction:column;gap:8px;max-height:220px;overflow-y:auto"></div>
+      </div>
+
+      <div class="stat-box" style="margin-bottom:16px">
+        <div class="stat-header">
+          <span>📜 Comprehensive Audit Trail (IP, ASN &amp; Timestamps)</span>
+          <button class="btn" style="padding:2px 8px;font-size:11px" onclick="loadAuditLogs()">🔄 Refresh</button>
+        </div>
+        <p style="color:var(--text-muted);font-size:13px;margin:6px 0 10px">
+          Every remote command, login attempt, file operation, and service manipulation is permanently audited.
+        </p>
+        <div id="auditLogList" style="max-height:260px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;font-family:var(--font-mono);font-size:11px"></div>
+      </div>
+
+      <div class="stat-box" style="border:1px solid rgba(239,68,68,0.4);background:rgba(239,68,68,0.05)">
+        <div class="stat-header"><span style="color:var(--red)">💥 Emergency Panic Wipe (--nuke)</span></div>
+        <p style="color:var(--text-muted);font-size:13px;margin:8px 0 12px">
+          Tears down all tunnels immediately, drops Windows Firewall exceptions, zeroes and deletes credentials, stops watchdog, and terminates this server agent.
+        </p>
+        <button class="red" style="font-weight:700" onclick="triggerPanicNuke()">🔥 Emergency Panic Wipe PC Credentials</button>
+      </div>
+    </div>
+  </div>
   <!-- 7. TERMINAL TAB -->
   <div id="tab-terminal" class="tab-content" style="display:none">
     <div class="card">
@@ -3171,13 +3504,16 @@ function toggleStreamFullscreen() {
 
 /* ================= API CALL WRAPPER ================= */
 async function api(path, body = null, method = 'POST') {
-  const opt = { method: body ? method : 'GET', headers: { 'Content-Type': 'application/json' } };
+  const headers = { 'Content-Type': 'application/json' };
+  const token = localStorage.getItem('pxn_jwt_token');
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  const opt = { method: body ? method : 'GET', headers };
   if (body) opt.body = JSON.stringify(body);
   try {
     const res = await fetch('/api/' + path, opt);
     if (res.status === 401) {
+      localStorage.removeItem('pxn_jwt_token');
       show(false);
-      attemptAutoConnect();
       return { error: 'Unauthorized' };
     }
     setHostConnectionStatus(true);
@@ -3227,53 +3563,180 @@ function show(ok) {
   }
 }
 
+let gDeviceId = localStorage.getItem('pxn_device_id') || ('dev_' + Math.random().toString(36).substring(2, 10));
+localStorage.setItem('pxn_device_id', gDeviceId);
+
 async function login() {
   const pw = $('pw').value;
+  const totpCode = $('loginTotp') ? $('loginTotp').value.trim() : '';
   if (!pw) return;
   try {
-    const d = await api('login', { password: pw });
+    const d = await api('login', {
+      password: pw,
+      totp_code: totpCode,
+      device_id: gDeviceId,
+      device_name: navigator.userAgent.includes('Mobile') ? 'Mobile Browser' : 'Desktop Browser'
+    });
+    if (d.totp_required) {
+      if ($('login2faBox')) $('login2faBox').style.display = 'block';
+      toast('🔐 2FA Code Required');
+      return;
+    }
     if (d.ok) {
-      if ($('chkRemember').checked) {
-        // Session maintained securely via HttpOnly cookie
-      } else {
-        
+      if (d.token) {
+        localStorage.setItem('pxn_jwt_token', d.token);
       }
       $('pw').value = '';
+      if ($('loginTotp')) $('loginTotp').value = '';
+      if ($('login2faBox')) $('login2faBox').style.display = 'none';
       show(true);
-      toast('✓ Connected to Host PC');
+      toast('⚡ Connected to Host PC');
+      check2FAStatus();
     } else {
-      toast('⚠ ' + (d.error || 'Authentication Failed'));
+      toast('❌ ' + (d.error || 'Authentication Failed'));
     }
   } catch (e) {
-    toast('⚠ Connection failed');
+    toast('❌ Connection failed');
   }
 }
 
 async function attemptAutoConnect() {
-  const savedPw = localStorage.getItem('pxn_saved_pw');
-  if (!savedPw) return;
+  const savedToken = localStorage.getItem('pxn_jwt_token');
+  if (!savedToken) return;
   try {
-    const d = await api('login', { password: savedPw });
-    if (d.ok) {
+    const d = await api('stats');
+    if (!d.error) {
       show(true);
-      toast('✓ Auto-connected to Host PC');
+      toast('⚡ Session restored');
     }
-  } catch (e) {}
+  } catch(e) {}
 }
 
 async function logout() {
-  
+  localStorage.removeItem('pxn_jwt_token');
   await api('logout', {});
   show(false);
 }
+
+/* ================= 2FA TOTP MANAGEMENT ================= */
+async function check2FAStatus() {
+  try {
+    const d = await api('2fa/status');
+    const badge = $('totpStatusBadge');
+    if (badge) {
+      badge.textContent = d.enabled ? 'ACTIVE & ENFORCED' : 'DISABLED';
+      badge.className = 'badge ' + (d.enabled ? 'badge-green' : 'badge-yellow');
+    }
+    if ($('totpSetupArea')) $('totpSetupArea').style.display = d.enabled ? 'none' : 'block';
+    if ($('totpActiveArea')) $('totpActiveArea').style.display = d.enabled ? 'block' : 'none';
+  } catch(e) {}
+}
+
+async function start2FAEnroll() {
+  const d = await api('2fa/enroll');
+  if (d.ok) {
+    $('totpQrContainer').innerHTML = `<img src="data:image/png;base64,${d.qr_b64}" style="width:160px;height:160px;display:block">`;
+    $('totpSecretText').textContent = d.secret;
+    $('totpModal').style.display = 'block';
+  }
+}
+
+async function confirm2FA() {
+  const code = $('totpConfirmCode').value.trim();
+  if (!code) return toast('Please enter the 6-digit code');
+  const d = await api('2fa/confirm', { code });
+  if (d.ok) {
+    toast('✅ 2FA successfully activated!');
+    $('totpModal').style.display = 'none';
+    check2FAStatus();
+  } else {
+    toast('❌ ' + (d.error || 'Verification failed'));
+  }
+}
+
+async function disable2FA() {
+  const pw = prompt('Enter Master Password to disable 2FA:');
+  if (!pw) return;
+  const d = await api('2fa/disable', { password: pw });
+  if (d.ok) {
+    toast('2FA Disabled');
+    check2FAStatus();
+  } else {
+    toast('❌ ' + (d.error || 'Failed'));
+  }
+}
+
+/* ================= DEVICES & SESSIONS ================= */
+async function loadDevices() {
+  const d = await api('devices');
+  const list = $('deviceList');
+  if (!list) return;
+  if (!d.devices || !d.devices.length) {
+    list.innerHTML = '<span style="color:var(--text-muted)">No registered devices.</span>';
+    return;
+  }
+  list.innerHTML = d.devices.map(dev => `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--surface-inset);border-radius:10px;border:1px solid var(--border-card)">
+      <div>
+        <div style="font-weight:700;font-size:12px">${dev.name} ${dev.id === gDeviceId ? '<span style="color:var(--accent)">(This Device)</span>' : ''}</div>
+        <div style="font-size:11px;color:var(--text-muted);font-family:var(--font-mono)">IP: ${dev.last_ip || 'N/A'} | Last: ${dev.last_active || 'N/A'}</div>
+      </div>
+      <div>
+        ${dev.revoked ? '<span class="badge badge-yellow">REVOKED</span>' : `<button class="red" style="padding:3px 8px;font-size:11px" onclick="revokeDevice('${dev.id}')">Revoke</button>`}
+      </div>
+    </div>
+  `).join('');
+}
+
+async function revokeDevice(id) {
+  if (!confirm('Revoke access for this device? It will be disconnected.')) return;
+  const d = await api('devices/revoke', { device_id: id });
+  toast(d.msg || d.error);
+  loadDevices();
+}
+
+/* ================= AUDIT LOGS ================= */
+async function loadAuditLogs() {
+  const d = await api('audit/logs');
+  const list = $('auditLogList');
+  if (!list) return;
+  if (!d.logs || !d.logs.length) {
+    list.innerHTML = '<span style="color:var(--text-muted)">No audit records yet.</span>';
+    return;
+  }
+  list.innerHTML = d.logs.map(log => `
+    <div style="padding:6px 10px;background:var(--surface-inset);border-radius:8px;border:1px solid var(--border-card)">
+      <span style="color:var(--accent)">[${log.timestamp || 'RECENT'}]</span>
+      <span style="color:#a855f7">[${log.ip || 'LAN'} - ${log.asn || 'LOCAL'}]</span>
+      <span style="color:var(--text-main)">${typeof log.action === 'string' ? log.action : JSON.stringify(log.action)}</span>
+    </div>
+  `).join('');
+}
+
+/* ================= PANIC WIPE ================= */
+async function triggerPanicNuke() {
+  const pw = prompt('⚠️ EMERGENCY PANIC WIPE: All tunnels dropped, credentials securely wiped, agent killed. Type master password to confirm:');
+  if (!pw) return;
+  try {
+    const d = await api('panic/nuke', { password: pw });
+    alert(d.msg || 'PANIC WIPE ENGAGED');
+    location.reload();
+  } catch(e) {
+    alert('Panic wipe signal dispatched.');
+    location.reload();
+  }
+}
+
 
 function updateHostServerPills() {
   const hostIp = location.hostname;
   const port = location.port || '8765';
   $('srvLanUrl').textContent = `http://${hostIp}:${port}`;
   // Check Cloudflare tunnel URL if any
-  fetch('/api/fleet').then(r => r.json()).then(d => {
-    // If tunnel report URL exists or stats report public url
+  fetch('/api/tunnel/url').then(r => r.json()).then(d => {
+    if (d.public_url) {
+      $('srvTunnelUrl').textContent = d.public_url;
+    }
   }).catch(()=>{});
 }
 
@@ -3691,6 +4154,7 @@ function showTab(name, btn) {
   if (name === 'ports') loadPorts();
   if (name === 'services') loadServices();
   if (name === 'overview') updateHardwareTelemetry();
+  if (name === 'security') { check2FAStatus(); loadDevices(); loadAuditLogs(); }
   if (btn) btn.classList.add('active');
 }
 
@@ -4246,7 +4710,7 @@ def api_tunnel_config():
     if report_url and not report_url.startswith(("http://", "https://")):
         return jsonify(error="Invalid report URL: must start with http:// or https://"), 400
     CFG["tunnel_report_url"] = report_url
-    CONFIG_FILE.write_text(json.dumps(CFG, indent=2), encoding="utf-8")
+    save_cfg()
     return jsonify(ok=True, msg="Tunnel report URL saved")
 
 
@@ -4283,20 +4747,37 @@ try:
 except Exception:
     pass
 if __name__ == "__main__":
+    if "--nuke" in sys.argv:
+        perform_nuke()
+        sys.exit(0)
+
     port = int(os.environ.get("PORT", CFG["port"]))
-    host = os.environ.get("HOST", CFG["host"])
+    tunnel_active = "--forward" in sys.argv or CFG.get("auto_forward", True)
+    lan_opt_in = CFG.get("lan_opt_in", False)
+    if tunnel_active and not lan_opt_in:
+        host = "127.0.0.1"
+    else:
+        host = os.environ.get("HOST", CFG["host"])
+
     print("\n=== Project-X-Nano running ===")
+    print(f"Server bound to:     http://{host}:{port}")
     print(f"Open on your phone:  http://{lan_ip()}:{port}")
     if FIRST_PASSWORD:
         print(f"Your password (shown once, change by deleting config.json): {FIRST_PASSWORD}")
-    print("Do NOT port-forward this to the internet. For outside-home access use Tailscale.\n")
-    # Auto-start tunnel port forwarding if enabled or requested via --forward
-    if "--forward" in sys.argv or CFG.get("auto_forward", True):
+    if tunnel_active and not lan_opt_in:
+        print("[Security] Bound exclusively to 127.0.0.1 (tunnel active, LAN access restricted for defense in depth).")
+    print("For outside-home access use Cloudflare/Ngrok Tunnel or Tailscale.\n")
+
+    if tunnel_active:
         try:
             import tunnel
             def _launch_tunnel():
                 time.sleep(1.0)
-                tunnel.start_tunnel(port=port, report_url=CFG.get("tunnel_report_url", ""))
+                tunnel.start_tunnel(
+                    port=port,
+                    report_url=CFG.get("tunnel_report_url", ""),
+                    ngrok_auth_token=CFG.get("ngrok_token", "")
+                )
             threading.Thread(target=_launch_tunnel, daemon=True).start()
         except Exception as e:
             print(f"[Tunnel] Error initializing tunnel: {e}")

@@ -35,6 +35,7 @@ public class MainActivity extends Activity {
     private EditText editServerUrl;
     private EditText editPassword;
     private TextView txtAppTitle;
+    private View statusDot;
     private SharedPreferences prefs;
 
     private String currentServer = "";
@@ -54,6 +55,7 @@ public class MainActivity extends Activity {
         editServerUrl = findViewById(R.id.editServerUrl);
         editPassword = findViewById(R.id.editPassword);
         txtAppTitle = findViewById(R.id.txtAppTitle);
+        statusDot = findViewById(R.id.statusDot);
 
         Button btnConnect = findViewById(R.id.btnConnect);
         Button btnQuickLock = findViewById(R.id.btnQuickLock);
@@ -156,13 +158,16 @@ public class MainActivity extends Activity {
     }
 
     private void autoLoginIfPossible(String url) {
-        if (!currentPassword.isEmpty() && (url.contains("/login") || url.endsWith(":8765/"))) {
+        if (!currentPassword.isEmpty() && (url.contains("/login") || url.endsWith(":8765/") || url.endsWith("/"))) {
             String js = "javascript:(function() {" +
-                    "var pw = document.querySelector('input[type=\"password\"]');" +
-                    "var btn = document.querySelector('button[type=\"submit\"]') || document.querySelector('form button');" +
-                    "if(pw && !pw.value && btn) {" +
+                    "var pw = document.getElementById('pw') || document.querySelector('input[type=\"password\"]');" +
+                    "if(pw && !pw.value) {" +
                     "  pw.value = '" + currentPassword.replace("'", "\\'") + "';" +
-                    "  btn.click();" +
+                    "  if (typeof login === 'function') { login(); }" +
+                    "  else {" +
+                    "    var btn = document.querySelector('button[type=\"submit\"]') || document.querySelector('form button');" +
+                    "    if (btn) btn.click();" +
+                    "  }" +
                     "}" +
                     "})()";
             webView.evaluateJavascript(js, null);
@@ -199,14 +204,17 @@ public class MainActivity extends Activity {
     private void loadServer(String url) {
         setupView.setVisibility(View.GONE);
         webView.setVisibility(View.VISIBLE);
-        txtAppTitle.setText(url.replace("http://", "").replace("https://", ""));
+        if (statusDot != null) statusDot.setVisibility(View.VISIBLE);
+        String displayUrl = url.replace("http://", "").replace("https://", "");
+        txtAppTitle.setText(displayUrl);
         webView.loadUrl(url);
     }
 
     private void showSetup() {
         webView.setVisibility(View.GONE);
         setupView.setVisibility(View.VISIBLE);
-        txtAppTitle.setText("RemotePC Setup");
+        if (statusDot != null) statusDot.setVisibility(View.GONE);
+        txtAppTitle.setText("Project-X-Nano Setup");
     }
 
     private void quickLockPC() {

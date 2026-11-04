@@ -9,16 +9,47 @@ package com.remotepc.controller;
 
 public final class R {
   public static final class color {
+    /**
+     * Accents & Gradients
+     */
     public static final int accent_blue=0x7f010000;
     public static final int accent_blue_hover=0x7f010001;
-    public static final int bg_dark=0x7f010002;
-    public static final int border_color=0x7f010003;
-    public static final int card_bg=0x7f010004;
-    public static final int text_muted=0x7f010005;
-    public static final int text_white=0x7f010006;
+    public static final int accent_cyan=0x7f010002;
+    public static final int accent_purple=0x7f010003;
+    public static final int bg_badge=0x7f010004;
+    public static final int bg_card=0x7f010005;
+    public static final int bg_card_surface=0x7f010006;
+    /**
+     * Backgrounds
+     */
+    public static final int bg_dark=0x7f010007;
+    public static final int bg_input=0x7f010008;
+    public static final int bg_topbar=0x7f010009;
+    /**
+     * Borders & Dividers
+     */
+    public static final int border_card=0x7f01000a;
+    public static final int border_focus=0x7f01000b;
+    public static final int color_amber=0x7f01000c;
+    /**
+     * Functional status colors
+     */
+    public static final int color_green=0x7f01000d;
+    public static final int color_red=0x7f01000e;
+    public static final int text_hint=0x7f01000f;
+    public static final int text_muted=0x7f010010;
+    /**
+     * Typography
+     */
+    public static final int text_white=0x7f010011;
   }
   public static final class drawable {
-    public static final int ic_launcher=0x7f020000;
+    public static final int btn_action_pill=0x7f020000;
+    public static final int btn_primary_gradient=0x7f020001;
+    public static final int card_glass_bg=0x7f020002;
+    public static final int edittext_rounded_bg=0x7f020003;
+    public static final int ic_launcher=0x7f020004;
+    public static final int status_dot_green=0x7f020005;
   }
   public static final class id {
     public static final int btnConnect=0x7f030000;
@@ -29,9 +60,10 @@ public final class R {
     public static final int editServerUrl=0x7f030005;
     public static final int progressBar=0x7f030006;
     public static final int setupView=0x7f030007;
-    public static final int topBar=0x7f030008;
-    public static final int txtAppTitle=0x7f030009;
-    public static final int webView=0x7f03000a;
+    public static final int statusDot=0x7f030008;
+    public static final int topBar=0x7f030009;
+    public static final int txtAppTitle=0x7f03000a;
+    public static final int webView=0x7f03000b;
   }
   public static final class layout {
     public static final int activity_main=0x7f040000;

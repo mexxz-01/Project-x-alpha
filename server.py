@@ -209,11 +209,12 @@ threading.Thread(target=background_auto_updater, daemon=True).start()
 # ---------------------------------------------------------------- auth & session management
 FAILS = {}  # ip -> (count, locked_until)
 DEVICE_LOCK = threading.Lock()
+PENDING_TOTP_SECRETS = {}
 
-def create_jwt_token(device_id: str) -> str:
+def create_jwt_token(device_id: str, expires_in: int = 3600) -> str:
     payload = {
         "device_id": device_id,
-        "exp": int(time.time()) + 3600,  # 1 hour expiry
+        "exp": int(time.time()) + expires_in,
         "iat": int(time.time()),
     }
     return jwt.encode(payload, CFG["secret_key"], algorithm="HS256")
@@ -256,6 +257,14 @@ def login_required(fn):
         return jsonify(error="Not logged in"), 401
     return wrapper
 
+@app.get("/api/auth/state")
+def api_auth_state():
+    return jsonify(
+        ok=True,
+        totp_enabled=bool(CFG.get("totp_enabled") and CFG.get("totp_secret")),
+        hostname=socket.gethostname()
+    )
+
 @app.post("/login")
 @app.post("/api/login")
 def login():
@@ -269,6 +278,7 @@ def login():
     data = request.get_json(silent=True) or {}
     pw = data.get("password", "")
     totp_code = str(data.get("totp_code", "")).strip()
+    remember = bool(data.get("remember", True))
     device_name = str(data.get("device_name", "Remote Client")).strip() or "Remote Client"
     device_id = str(data.get("device_id", "")).strip() or secrets.token_hex(8)
 
@@ -291,7 +301,7 @@ def login():
         if not totp_code:
             return jsonify(totp_required=True, msg="2FA TOTP code required to complete login")
         totp = pyotp.TOTP(CFG["totp_secret"])
-        if not totp.verify(totp_code, valid_window=1):
+        if not totp.verify(totp_code, valid_window=2):
             count += 1
             FAILS[ip] = (count, time.time() + 60 if count >= 3 else 0)
             audit("login FAILED: invalid TOTP 2FA code", {"ip": ip})
@@ -300,7 +310,7 @@ def login():
     FAILS.pop(ip, None)
     session["ok"] = True
     session["device_id"] = device_id
-    session.permanent = True
+    session.permanent = bool(remember)
 
     with DEVICE_LOCK:
         devices = CFG.setdefault("registered_devices", [])
@@ -321,9 +331,10 @@ def login():
             })
         save_cfg()
 
-    token = create_jwt_token(device_id)
+    expires_in = (30 * 86400) if remember else 86400
+    token = create_jwt_token(device_id, expires_in=expires_in)
     push_alert(f"New authenticated login from {ip} ({device_name})")
-    audit("login SUCCESS", {"device_id": device_id, "device_name": device_name})
+    audit("login SUCCESS", {"device_id": device_id, "device_name": device_name, "remember": remember})
     return jsonify(ok=True, token=token, device_id=device_id)
 
 @app.post("/logout")
@@ -341,7 +352,11 @@ def api_2fa_status():
 @app.post("/api/2fa/enroll")
 @login_required
 def api_2fa_enroll():
+    ip = get_client_ip()
+    device_id = getattr(request, "device_id", None) or session.get("device_id") or ip
     secret = pyotp.random_base32()
+    PENDING_TOTP_SECRETS[device_id] = secret
+    PENDING_TOTP_SECRETS[ip] = secret
     session["pending_totp_secret"] = secret
     hostname = socket.gethostname()
     uri = pyotp.totp.TOTP(secret).provisioning_uri(name=f"Project-X-Nano ({hostname})", issuer_name="Project-X")
@@ -354,17 +369,22 @@ def api_2fa_enroll():
 @app.post("/api/2fa/confirm")
 @login_required
 def api_2fa_confirm():
+    ip = get_client_ip()
+    device_id = getattr(request, "device_id", None) or session.get("device_id") or ip
     d = request.get_json(silent=True) or {}
     code = str(d.get("code", "")).strip()
-    secret = session.get("pending_totp_secret") or CFG.get("totp_secret")
+    client_secret = str(d.get("secret", "")).strip()
+    secret = client_secret or session.get("pending_totp_secret") or PENDING_TOTP_SECRETS.get(device_id) or PENDING_TOTP_SECRETS.get(ip) or CFG.get("totp_secret")
     if not secret:
         return jsonify(error="No 2FA setup in progress"), 400
     totp = pyotp.TOTP(secret)
-    if totp.verify(code, valid_window=1):
+    if totp.verify(code, valid_window=2):
         CFG["totp_secret"] = secret
         CFG["totp_enabled"] = True
         save_cfg()
         session.pop("pending_totp_secret", None)
+        PENDING_TOTP_SECRETS.pop(device_id, None)
+        PENDING_TOTP_SECRETS.pop(ip, None)
         audit("2FA TOTP activated successfully")
         return jsonify(ok=True, msg="Two-Factor Authentication (TOTP) successfully activated!")
     return jsonify(error="Invalid verification code. Please check your authenticator app and try again."), 400
@@ -3671,35 +3691,77 @@ function show(ok) {
 
 let gDeviceId = localStorage.getItem('pxn_device_id') || ('dev_' + Math.random().toString(36).substring(2, 10));
 localStorage.setItem('pxn_device_id', gDeviceId);
+let gPendingLoginPw = '';
+let gPendingTotpSecret = '';
 
 async function login() {
-  const pw = $('pw').value;
-  const totpCode = $('loginTotp') ? $('loginTotp').value.trim() : '';
-  if (!pw) return;
+  const pwInput = $('pw');
+  const totpInput = $('loginTotp');
+  const remember = $('chkRemember') ? $('chkRemember').checked : true;
+
+  let pw = pwInput ? pwInput.value : '';
+  if (!pw && gPendingLoginPw) {
+    pw = gPendingLoginPw;
+  }
+  if (!pw && remember) {
+    pw = localStorage.getItem('pxn_saved_pw') || '';
+  }
+
+  if (!pw) {
+    toast('⚠️ Please enter Master Password');
+    if (pwInput) pwInput.focus();
+    return;
+  }
+
+  const totpCode = totpInput ? totpInput.value.trim() : '';
+
   try {
     const d = await api('login', {
       password: pw,
       totp_code: totpCode,
+      remember: remember,
       device_id: gDeviceId,
-      device_name: navigator.userAgent.includes('Mobile') ? 'Mobile Browser' : 'Desktop Browser'
+      device_name: navigator.userAgent.includes('Mobile') ? 'Mobile Device' : 'Desktop Browser'
     });
+
     if (d.totp_required) {
-      if ($('login2faBox')) $('login2faBox').style.display = 'block';
-      toast('🔐 2FA Code Required');
+      gPendingLoginPw = pw;
+      if ($('login2faBox')) {
+        $('login2faBox').style.display = 'block';
+      }
+      if (totpInput) {
+        totpInput.focus();
+      }
+      toast('🔐 2FA Code Required - Enter 6-digit code');
       return;
     }
+
     if (d.ok) {
+      if (remember) {
+        localStorage.setItem('pxn_remember', 'true');
+        localStorage.setItem('pxn_saved_pw', pw);
+      } else {
+        localStorage.removeItem('pxn_remember');
+        localStorage.removeItem('pxn_saved_pw');
+      }
+
       if (d.token) {
         localStorage.setItem('pxn_jwt_token', d.token);
       }
-      $('pw').value = '';
-      if ($('loginTotp')) $('loginTotp').value = '';
+
+      gPendingLoginPw = '';
+      if (pwInput) pwInput.value = '';
+      if (totpInput) totpInput.value = '';
       if ($('login2faBox')) $('login2faBox').style.display = 'none';
       show(true);
       toast('⚡ Connected to Host PC');
       check2FAStatus();
     } else {
       toast('❌ ' + (d.error || 'Authentication Failed'));
+      if (totpInput && $('login2faBox') && $('login2faBox').style.display !== 'none') {
+        totpInput.select();
+        totpInput.focus();
+      }
     }
   } catch (e) {
     toast('❌ Connection failed');
@@ -3707,15 +3769,26 @@ async function login() {
 }
 
 async function attemptAutoConnect() {
+  const remember = localStorage.getItem('pxn_remember') !== 'false';
   const savedToken = localStorage.getItem('pxn_jwt_token');
-  if (!savedToken) return;
-  try {
-    const d = await api('stats');
-    if (!d.error) {
-      show(true);
-      toast('⚡ Session restored');
+
+  if (savedToken) {
+    try {
+      const d = await api('stats');
+      if (!d.error) {
+        show(true);
+        toast('⚡ Session restored');
+        return;
+      }
+    } catch(e) {}
+  }
+
+  if (remember) {
+    const savedPw = localStorage.getItem('pxn_saved_pw');
+    if (savedPw && $('pw') && !$('pw').value) {
+      $('pw').value = savedPw;
     }
-  } catch(e) {}
+  }
 }
 
 async function logout() {
@@ -3741,19 +3814,27 @@ async function check2FAStatus() {
 async function start2FAEnroll() {
   const d = await api('2fa/enroll');
   if (d.ok) {
+    gPendingTotpSecret = d.secret;
     $('totpQrContainer').innerHTML = `<img src="data:image/png;base64,${d.qr_b64}" style="width:160px;height:160px;display:block">`;
     $('totpSecretText').textContent = d.secret;
     $('totpModal').style.display = 'block';
+    if ($('totpConfirmCode')) {
+      $('totpConfirmCode').value = '';
+      $('totpConfirmCode').focus();
+    }
+  } else {
+    toast('❌ ' + (d.error || 'Failed to start 2FA enrollment'));
   }
 }
 
 async function confirm2FA() {
   const code = $('totpConfirmCode').value.trim();
   if (!code) return toast('Please enter the 6-digit code');
-  const d = await api('2fa/confirm', { code });
+  const d = await api('2fa/confirm', { code: code, secret: gPendingTotpSecret });
   if (d.ok) {
     toast('✅ 2FA successfully activated!');
     $('totpModal').style.display = 'none';
+    gPendingTotpSecret = '';
     check2FAStatus();
   } else {
     toast('❌ ' + (d.error || 'Verification failed'));
@@ -3768,6 +3849,9 @@ async function disable2FA() {
     toast('2FA Disabled');
     check2FAStatus();
   } else {
+    toast('❌ ' + (d.error || 'Failed'));
+  }
+}
     toast('❌ ' + (d.error || 'Failed'));
   }
 }
@@ -4750,9 +4834,54 @@ async function init() {
   }
 }
 
-$('pw').addEventListener('keydown', e => { if (e.key === 'Enter') login(); });
+if ($('pw')) {
+  $('pw').addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      if ($('login2faBox') && $('login2faBox').style.display !== 'none' && $('loginTotp') && !$('loginTotp').value) {
+        $('loginTotp').focus();
+      } else {
+        login();
+      }
+    }
+  });
+}
 
-// Initial check: if already authenticated via session cookie, show dashboard immediately;
+if ($('loginTotp')) {
+  $('loginTotp').addEventListener('keydown', e => {
+    if (e.key === 'Enter') login();
+  });
+  $('loginTotp').addEventListener('input', e => {
+    if (e.target.value.trim().length === 6) login();
+  });
+}
+
+if ($('totpConfirmCode')) {
+  $('totpConfirmCode').addEventListener('keydown', e => {
+    if (e.key === 'Enter') confirm2FA();
+  });
+  $('totpConfirmCode').addEventListener('input', e => {
+    if (e.target.value.trim().length === 6) confirm2FA();
+  });
+}
+
+if ($('chkRemember')) {
+  $('chkRemember').checked = localStorage.getItem('pxn_remember') !== 'false';
+  $('chkRemember').addEventListener('change', e => {
+    if (!e.target.checked) {
+      localStorage.removeItem('pxn_remember');
+      localStorage.removeItem('pxn_saved_pw');
+    }
+  });
+}
+
+// Pre-check if 2FA is active on the server
+fetch('/api/auth/state').then(r => r.json()).then(state => {
+  if (state && state.totp_enabled) {
+    if ($('login2faBox')) $('login2faBox').style.display = 'block';
+  }
+}).catch(() => {});
+
+// Initial check: if already authenticated via session cookie or JWT, show dashboard immediately;
 // otherwise, attempt auto-connect from saved credentials.
 fetch('/api/stats').then(r => {
   if (r.ok) {

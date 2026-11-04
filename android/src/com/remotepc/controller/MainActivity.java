@@ -441,6 +441,12 @@ public class MainActivity extends Activity {
                     "var pw = document.getElementById('pw') || document.querySelector('input[type=\"password\"]');" +
                     "if(pw && !pw.value) {" +
                     "  pw.value = '" + currentPassword.replace("'", "\\'") + "';" +
+                    "}" +
+                    "var totpBox = document.getElementById('login2faBox');" +
+                    "var totpInput = document.getElementById('loginTotp');" +
+                    "if(totpBox && totpBox.style.display !== 'none') {" +
+                    "  if(totpInput) { totpInput.focus(); }" +
+                    "} else {" +
                     "  if (typeof login === 'function') { login(); }" +
                     "  else {" +
                     "    var btn = document.querySelector('button[type=\"submit\"]') || document.querySelector('form button');" +

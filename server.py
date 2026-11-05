@@ -268,6 +268,36 @@ def api_auth_state():
         hostname=socket.gethostname()
     )
 
+@app.post("/api/auth/enroll_direct")
+def api_auth_enroll_direct():
+    """Allow retrieving/scanning 2FA QR code with Master Password from the login screen."""
+    d = request.get_json(silent=True) or {}
+    pw = d.get("password", "")
+    if not pw or not check_password_hash(CFG["password_hash"], pw):
+        return jsonify(error="Wrong master password"), 403
+    secret = CFG.get("totp_secret") or pyotp.random_base32()
+    PENDING_TOTP_SECRETS[get_client_ip()] = secret
+    hostname = socket.gethostname()
+    uri = pyotp.totp.TOTP(secret).provisioning_uri(name=f"Project-X-Nano ({hostname})", issuer_name="Project-X")
+    img = qrcode.make(uri)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    qr_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+    return jsonify(ok=True, secret=secret, qr_b64=qr_b64)
+
+@app.post("/api/auth/reset_2fa")
+def api_auth_reset_2fa():
+    """Allow resetting 2FA using Master Password directly from localhost/login screen."""
+    d = request.get_json(silent=True) or {}
+    pw = d.get("password", "")
+    if not pw or not check_password_hash(CFG["password_hash"], pw):
+        return jsonify(error="Wrong master password"), 403
+    CFG["totp_enabled"] = False
+    CFG["totp_secret"] = ""
+    save_cfg()
+    audit("2FA reset from login prompt via master password")
+    return jsonify(ok=True, msg="2FA disabled successfully")
+
 @app.post("/login")
 @app.post("/api/login")
 def login():
@@ -2932,10 +2962,27 @@ button.acc, .btn.acc {
   
   <button id="btnLoginSubmit" class="acc" style="width:100%;height:46px;font-size:15px;font-weight:700" onclick="login()">⚡ Connect to PC</button>
   
+  <div id="login2faHelpRow" style="margin-top:14px;font-size:12px;display:flex;justify-content:center;align-items:center;gap:12px">
+    <a href="javascript:void(0)" onclick="openLoginEnrollModal()" style="color:var(--accent);text-decoration:none">📱 Scan / Setup QR Code</a>
+    <span style="color:var(--text-hint)">•</span>
+    <a href="javascript:void(0)" onclick="quickReset2FA()" style="color:var(--text-muted);text-decoration:none">⚠️ Reset 2FA</a>
+  </div>
+  
   <div style="margin-top:18px;display:flex;justify-content:center;gap:12px">
     <a href="/download/apk" style="color:var(--accent);font-size:12px;text-decoration:none;display:inline-flex;align-items:center;gap:6px">
       <span>📱</span> Download Android Controller APK
     </a>
+  </div>
+</div>
+
+<!-- Login QR Code Modal -->
+<div id="loginQrModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:99999;align-items:center;justify-content:center;padding:16px">
+  <div class="card" style="max-width:380px;width:100%;text-align:center;position:relative;margin:auto;box-shadow:0 16px 48px rgba(0,0,0,0.7)">
+    <div style="font-weight:700;font-size:16px;margin-bottom:6px">📱 Scan 2FA QR Code</div>
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Scan this into Google Authenticator or Authy</div>
+    <div id="loginModalQr" style="padding:10px;background:#fff;border-radius:10px;display:inline-block;margin-bottom:12px"></div>
+    <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px">Manual Key: <span id="loginModalSecret" style="font-family:var(--font-mono);color:var(--accent);font-weight:700"></span></div>
+    <button class="btn" style="width:100%;margin-top:8px" onclick="$('loginQrModal').style.display='none'">✓ Done, Close</button>
   </div>
 </div>
 
@@ -3922,6 +3969,50 @@ async function disable2FA() {
     check2FAStatus();
   } else {
     toast('❌ ' + (d.error || 'Failed'));
+  }
+}
+
+async function openLoginEnrollModal() {
+  const pw = $('pw').value || prompt('Enter Master Password to view 2FA QR Code:');
+  if (!pw) return;
+  try {
+    const res = await fetch('/api/auth/enroll_direct', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pw })
+    });
+    const d = await res.json();
+    if (d.ok) {
+      $('loginModalQr').innerHTML = `<img src="data:image/png;base64,${d.qr_b64}" style="width:160px;height:160px;display:block">`;
+      $('loginModalSecret').textContent = d.secret;
+      $('loginQrModal').style.display = 'flex';
+    } else {
+      toast('❌ ' + (d.error || 'Password incorrect'));
+    }
+  } catch(e) {
+    toast('❌ Error loading QR');
+  }
+}
+
+async function quickReset2FA() {
+  const pw = prompt('Enter Master Password to reset and disable 2FA:');
+  if (!pw) return;
+  try {
+    const res = await fetch('/api/auth/reset_2fa', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pw })
+    });
+    const d = await res.json();
+    if (d.ok) {
+      toast('✅ 2FA disabled! You can now log in with only your password.');
+      if ($('login2faBox')) $('login2faBox').style.display = 'none';
+      if ($('loginTotp')) $('loginTotp').value = '';
+    } else {
+      toast('❌ ' + (d.error || 'Password incorrect'));
+    }
+  } catch(e) {
+    toast('❌ Error resetting 2FA');
   }
 }
 
@@ -5053,6 +5144,12 @@ except Exception:
 if __name__ == "__main__":
     if "--nuke" in sys.argv:
         perform_nuke()
+        sys.exit(0)
+    if "--reset-2fa" in sys.argv:
+        CFG["totp_enabled"] = False
+        CFG["totp_secret"] = ""
+        save_cfg()
+        print("[Security] 2FA disabled successfully! You can now log in using only your master password.")
         sys.exit(0)
 
     port = int(os.environ.get("PORT", CFG["port"]))

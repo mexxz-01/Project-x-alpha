@@ -181,7 +181,9 @@ integrity_engine = IntegrityEngine(BASE)
 
 # Background integrity check & self-healing worker
 def _integrity_worker():
-    time.sleep(6)
+    if not CFG.get("auto_repair", False):
+        return
+    time.sleep(10)
     try:
         res = integrity_engine.auto_repair()
         if res.get("missing_count", 0) > 0:
@@ -189,10 +191,10 @@ def _integrity_worker():
     except Exception:
         pass
 
-threading.Thread(target=_integrity_worker, daemon=True).start()
-
 def background_auto_updater():
-    time.sleep(15)
+    if not CFG.get("auto_update", False):
+        return
+    time.sleep(30)
     while True:
         try:
             check = integrity_engine.check_for_updates()
@@ -204,6 +206,7 @@ def background_auto_updater():
             pass
         time.sleep(600)
 
+threading.Thread(target=_integrity_worker, daemon=True).start()
 threading.Thread(target=background_auto_updater, daemon=True).start()
 
 # ---------------------------------------------------------------- auth & session management
@@ -257,7 +260,7 @@ def login_required(fn):
         return jsonify(error="Not logged in"), 401
     return wrapper
 
-@app.get("/api/auth/state")
+@app.route("/api/auth/state", methods=["GET"])
 def api_auth_state():
     return jsonify(
         ok=True,
@@ -2894,29 +2897,44 @@ button.acc, .btn.acc {
 <div id="reconnectBanner">🔄 Reconnecting to Host PC Server...</div>
 
 <!-- Login Modal -->
-<div id="login" class="card" style="display:none;max-width:400px;margin:80px auto;text-align:center">
-  <div style="margin-bottom:18px">
-    <img src="/favicon.png" style="width:58px;height:58px;margin:0 auto 12px;border-radius:14px;box-shadow:0 8px 24px rgba(0,0,0,0.4)" alt="Logo">
-    <h1 style="font-size:22px;margin:0;font-weight:800">Project-X-Nano</h1>
+<div id="login" class="card" style="display:none;max-width:420px;margin:70px auto;text-align:center;box-shadow:0 12px 40px rgba(0,0,0,0.6)">
+  <div style="margin-bottom:20px">
+    <div style="width:64px;height:64px;margin:0 auto 12px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg, #06b6d4, #3b82f6);border-radius:18px;box-shadow:0 8px 24px rgba(6,182,212,0.3)">
+      <span style="font-size:32px">⚡</span>
+    </div>
+    <h1 style="font-size:24px;margin:0;font-weight:800;letter-spacing:-0.5px">Project-X-Nano</h1>
     <p style="color:var(--text-muted);font-size:13px;margin:6px 0 0">Dedicated Host Controller &amp; Fleet Hub</p>
   </div>
-  <input id="pw" type="password" placeholder="Enter Master Password" style="margin-bottom:12px;text-align:center">
   
-  <div id="login2faBox" style="display:none;margin-bottom:12px">
-    <div style="font-size:12px;color:var(--accent);margin-bottom:6px">🔐 2FA Enabled - Enter Authenticator Code:</div>
-    <input id="loginTotp" type="text" placeholder="6-digit code" maxlength="6" style="text-align:center;font-size:16px;letter-spacing:4px">
+  <div style="text-align:left;margin-bottom:6px;font-size:12px;font-weight:700;color:var(--text-muted)">
+    🔑 MASTER PASSWORD
+  </div>
+  <input id="pw" type="password" placeholder="Enter Master Password" style="margin-bottom:14px;font-size:15px">
+  
+  <div id="login2faBox" style="display:none;margin-bottom:14px;background:var(--surface-inset);padding:14px;border-radius:12px;border:1px solid var(--accent);text-align:left">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <span style="font-size:12px;font-weight:700;color:var(--accent)">🔐 AUTHENTICATOR 2FA CODE</span>
+      <span style="font-size:10px;color:var(--green)">● 6 Digits</span>
+    </div>
+    <input id="loginTotp" type="text" placeholder="000000" maxlength="6" inputmode="numeric" style="text-align:center;font-size:20px;font-weight:800;letter-spacing:8px;font-family:var(--font-mono);width:100%">
+    <div style="font-size:11px;color:var(--text-muted);margin-top:6px;text-align:center">
+      Enter 6-digit code from your authenticator app
+    </div>
   </div>
 
-  <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:14px;font-size:12px;color:var(--text-muted)">
-    <input type="checkbox" id="chkRemember" checked style="width:auto;margin:0;cursor:pointer">
-    <label for="chkRemember" style="cursor:pointer">Remember &amp; Auto-Connect</label>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;font-size:12px;color:var(--text-muted)">
+    <label for="chkRemember" style="display:flex;align-items:center;gap:8px;cursor:pointer">
+      <input type="checkbox" id="chkRemember" checked style="width:auto;margin:0;cursor:pointer">
+      <span>Remember &amp; Auto-Connect</span>
+    </label>
+    <span style="font-size:11px;color:var(--text-hint)">30-day token</span>
   </div>
   
-  <button class="acc" style="width:100%" onclick="login()">⚡ Connect to PC</button>
+  <button id="btnLoginSubmit" class="acc" style="width:100%;height:46px;font-size:15px;font-weight:700" onclick="login()">⚡ Connect to PC</button>
   
-  <div style="margin-top:16px;display:flex;justify-content:center;gap:12px">
+  <div style="margin-top:18px;display:flex;justify-content:center;gap:12px">
     <a href="/download/apk" style="color:var(--accent);font-size:12px;text-decoration:none;display:inline-flex;align-items:center;gap:6px">
-      <span>📱</span> Download Android APK
+      <span>📱</span> Download Android Controller APK
     </a>
   </div>
 </div>
@@ -3482,22 +3500,47 @@ button.acc, .btn.acc {
         <p style="color:var(--text-muted);font-size:13px;margin:8px 0 12px">
           Require a 6-digit one-time code from Google Authenticator, Authy, or 1Password every time anyone attempts to log in.
         </p>
-        <div id="totpSetupArea">
-          <button class="acc" onclick="start2FAEnroll()">📱 Set Up Authenticator 2FA</button>
-        </div>
-        <div id="totpActiveArea" style="display:none">
-          <button class="red" onclick="disable2FA()">Disable 2FA</button>
+        <div id="totpActiveArea" style="display:none;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.3);border-radius:14px;padding:16px;margin-bottom:12px">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+            <div>
+              <div style="color:var(--green);font-weight:700;font-size:14px;margin-bottom:4px">✅ Two-Factor Authentication is Active &amp; Enforced</div>
+              <div style="color:var(--text-muted);font-size:12px">Your PC is protected with 6-digit TOTP one-time codes on all remote logins.</div>
+            </div>
+            <div style="display:flex;gap:8px">
+              <button class="btn" onclick="start2FAEnroll(true)">🔄 Re-configure 2FA</button>
+              <button class="red" onclick="disable2FA()">Disable 2FA</button>
+            </div>
+          </div>
         </div>
 
-        <div id="totpModal" style="display:none;margin-top:14px;background:var(--surface-inset);padding:16px;border-radius:14px;border:1px solid var(--border-card);text-align:center">
-          <div style="font-weight:700;margin-bottom:8px">Scan QR Code in Authenticator App</div>
-          <div id="totpQrContainer" style="margin:12px auto;display:inline-block;padding:8px;background:#fff;border-radius:8px"></div>
-          <div style="font-family:var(--font-mono);font-size:12px;margin-bottom:12px;word-break:break-all;color:var(--text-muted)">
-            Key: <span id="totpSecretText" style="color:var(--accent)"></span>
+        <div id="totpSetupArea" style="background:var(--surface-inset);padding:18px;border-radius:14px;border:1px solid var(--border-card)">
+          <div style="display:flex;align-items:center;gap:8px;font-weight:700;color:var(--accent);margin-bottom:6px">
+            <span>📱 Step 1: Scan QR Code or Copy Secret Key</span>
           </div>
-          <div class="row" style="max-width:280px;margin:auto">
-            <input id="totpConfirmCode" placeholder="Enter 6-digit Code" maxlength="6" style="text-align:center;font-size:16px;letter-spacing:4px">
-            <button class="acc" onclick="confirm2FA()">Verify &amp; Enable</button>
+          <p style="color:var(--text-muted);font-size:12px;margin:0 0 14px">
+            Open Google Authenticator, Microsoft Authenticator, or Authy on your phone and scan the QR code below:
+          </p>
+
+          <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:20px;margin-bottom:16px">
+            <div id="totpQrContainer" style="padding:10px;background:#fff;border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,0.3);min-width:160px;min-height:160px;display:flex;align-items:center;justify-content:center">
+              <span style="color:#000;font-size:12px">Generating QR...</span>
+            </div>
+
+            <div style="flex:1;min-width:240px">
+              <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px">Or enter this Secret Key manually:</div>
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+                <input id="totpSecretText" readonly style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--accent);letter-spacing:2px;background:var(--bg-dark);padding:8px 12px;border-radius:8px;border:1px solid var(--border-card);width:100%" value="Loading...">
+                <button class="btn" style="white-space:nowrap;padding:8px 14px" onclick="copyTotpSecret()">📋 Copy</button>
+              </div>
+
+              <div style="font-size:12px;font-weight:700;color:var(--text-white);margin-bottom:6px">
+                🔢 Step 2: Enter 6-Digit Code from Authenticator:
+              </div>
+              <div style="display:flex;gap:8px">
+                <input id="totpConfirmCode" placeholder="000000" maxlength="6" inputmode="numeric" style="text-align:center;font-size:18px;font-weight:700;letter-spacing:6px;width:140px;font-family:var(--font-mono)">
+                <button class="acc" style="flex:1" onclick="confirm2FA()">⚡ Verify &amp; Activate 2FA</button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -3798,32 +3841,58 @@ async function logout() {
 }
 
 /* ================= 2FA TOTP MANAGEMENT ================= */
+function copyTotpSecret() {
+  const input = $('totpSecretText');
+  if (!input || !input.value) return;
+  navigator.clipboard.writeText(input.value).then(() => {
+    toast('📋 Secret key copied to clipboard!');
+  }).catch(() => {
+    input.select();
+    document.execCommand('copy');
+    toast('📋 Secret key copied!');
+  });
+}
+
 async function check2FAStatus() {
   try {
     const d = await api('2fa/status');
     const badge = $('totpStatusBadge');
     if (badge) {
-      badge.textContent = d.enabled ? 'ACTIVE & ENFORCED' : 'DISABLED';
+      badge.textContent = d.enabled ? 'ACTIVE & ENFORCED' : 'NOT ENABLED';
       badge.className = 'badge ' + (d.enabled ? 'badge-green' : 'badge-yellow');
     }
     if ($('totpSetupArea')) $('totpSetupArea').style.display = d.enabled ? 'none' : 'block';
     if ($('totpActiveArea')) $('totpActiveArea').style.display = d.enabled ? 'block' : 'none';
+
+    // In auth setup, display key and QR immediately at the first time
+    if (!d.enabled) {
+      start2FAEnroll();
+    }
   } catch(e) {}
 }
 
-async function start2FAEnroll() {
-  const d = await api('2fa/enroll');
-  if (d.ok) {
-    gPendingTotpSecret = d.secret;
-    $('totpQrContainer').innerHTML = `<img src="data:image/png;base64,${d.qr_b64}" style="width:160px;height:160px;display:block">`;
-    $('totpSecretText').textContent = d.secret;
-    $('totpModal').style.display = 'block';
-    if ($('totpConfirmCode')) {
-      $('totpConfirmCode').value = '';
-      $('totpConfirmCode').focus();
+async function start2FAEnroll(force = false) {
+  if ($('totpSetupArea')) $('totpSetupArea').style.display = 'block';
+  if ($('totpActiveArea') && force) $('totpActiveArea').style.display = 'none';
+
+  try {
+    const d = await api('2fa/enroll');
+    if (d.ok) {
+      gPendingTotpSecret = d.secret;
+      if ($('totpQrContainer')) {
+        $('totpQrContainer').innerHTML = `<img src="data:image/png;base64,${d.qr_b64}" style="width:160px;height:160px;display:block;border-radius:6px" alt="2FA QR">`;
+      }
+      if ($('totpSecretText')) {
+        $('totpSecretText').value = d.secret;
+      }
+      if ($('totpConfirmCode')) {
+        $('totpConfirmCode').value = '';
+      }
+    } else {
+      toast('❌ ' + (d.error || 'Failed to generate 2FA key'));
     }
-  } else {
-    toast('❌ ' + (d.error || 'Failed to start 2FA enrollment'));
+  } catch(e) {
+    toast('❌ Error loading 2FA QR code');
   }
 }
 
@@ -3833,11 +3902,14 @@ async function confirm2FA() {
   const d = await api('2fa/confirm', { code: code, secret: gPendingTotpSecret });
   if (d.ok) {
     toast('✅ 2FA successfully activated!');
-    $('totpModal').style.display = 'none';
     gPendingTotpSecret = '';
     check2FAStatus();
   } else {
     toast('❌ ' + (d.error || 'Verification failed'));
+    if ($('totpConfirmCode')) {
+      $('totpConfirmCode').select();
+      $('totpConfirmCode').focus();
+    }
   }
 }
 
@@ -3849,9 +3921,6 @@ async function disable2FA() {
     toast('2FA Disabled');
     check2FAStatus();
   } else {
-    toast('❌ ' + (d.error || 'Failed'));
-  }
-}
     toast('❌ ' + (d.error || 'Failed'));
   }
 }
@@ -4874,12 +4943,11 @@ if ($('chkRemember')) {
   });
 }
 
-// Pre-check if 2FA is active on the server
-fetch('/api/auth/state').then(r => r.json()).then(state => {
-  if (state && state.totp_enabled) {
-    if ($('login2faBox')) $('login2faBox').style.display = 'block';
-  }
-}).catch(() => {});
+const G_TOTP_ENABLED = __SERVER_TOTP_ACTIVE__;
+if (G_TOTP_ENABLED) {
+  if ($('login2faBox')) $('login2faBox').style.display = 'block';
+  if ($('pw') && $('pw').value && $('loginTotp')) $('loginTotp').focus();
+}
 
 // Initial check: if already authenticated via session cookie or JWT, show dashboard immediately;
 // otherwise, attempt auto-connect from saved credentials.
@@ -4951,7 +5019,8 @@ def api_tunnel_config():
 
 @app.get("/")
 def index():
-    return PAGE
+    totp_active = "true" if (CFG.get("totp_enabled") and CFG.get("totp_secret")) else "false"
+    return PAGE.replace("__SERVER_TOTP_ACTIVE__", totp_active)
 def lan_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
@@ -4988,14 +5057,12 @@ if __name__ == "__main__":
 
     port = int(os.environ.get("PORT", CFG["port"]))
     tunnel_active = "--forward" in sys.argv or CFG.get("auto_forward", True)
-    lan_opt_in = CFG.get("lan_opt_in", False)
-    if tunnel_active and not lan_opt_in:
-        host = "127.0.0.1"
-    else:
-        host = os.environ.get("HOST", CFG["host"])
+    lan_opt_in = CFG.get("lan_opt_in", True)
+    host = os.environ.get("HOST", CFG.get("host", "0.0.0.0"))
 
     print("\n=== Project-X-Nano running ===")
     print(f"Server bound to:     http://{host}:{port}")
+    print(f"Open locally:        http://localhost:{port} or http://127.0.0.1:{port}")
     print(f"Open on your phone:  http://{lan_ip()}:{port}")
     if FIRST_PASSWORD:
         print(f"Your password (shown once, change by deleting config.json): {FIRST_PASSWORD}")
@@ -5010,8 +5077,7 @@ if __name__ == "__main__":
                 time.sleep(1.0)
                 tunnel.start_tunnel(
                     port=port,
-                    report_url=CFG.get("tunnel_report_url", ""),
-                    ngrok_auth_token=CFG.get("ngrok_token", "")
+                    report_url=CFG.get("tunnel_report_url", "")
                 )
             threading.Thread(target=_launch_tunnel, daemon=True).start()
         except Exception as e:

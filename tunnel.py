@@ -70,7 +70,7 @@ def ensure_tunnel_binary():
         print(f"[Tunnel] Failed to download tunnel engine: {e}")
         return False
 
-def start_tunnel(port: int = 8765, report_url: str = "") -> str:
+def start_tunnel(port: int = 8765, report_url: str = "", **kwargs) -> str:
     """Start Cloudflare tunnel in background, retrieve the public URL, and report it."""
     global _tunnel_process, _public_url
 

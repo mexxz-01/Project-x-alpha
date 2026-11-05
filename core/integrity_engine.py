@@ -39,7 +39,6 @@ else:
 CRITICAL_FILES = [
     ("server.py", f"{GITHUB_RAW_BASE}/server.py"),
     ("tunnel.py", f"{GITHUB_RAW_BASE}/tunnel.py"),
-    ("config.json", f"{GITHUB_RAW_BASE}/config.json"),
     ("version.json", f"{GITHUB_RAW_BASE}/version.json"),
     ("favicon.png", f"{GITHUB_RAW_BASE}/favicon.png"),
     ("icon-192.png", f"{GITHUB_RAW_BASE}/icon-192.png"),

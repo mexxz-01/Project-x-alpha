@@ -1,6 +1,6 @@
 dist/
 *.exe
-*.apk
+!public/Project-X-Nano.apk
 cloudflared.exe
 android/
 hotspot/

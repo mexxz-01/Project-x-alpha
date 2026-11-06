@@ -1400,10 +1400,23 @@ button.acc, .btn.acc {
   <!-- 7. TERMINAL TAB -->
   <div id="tab-terminal" class="tab-content" style="display:none">
     <div class="card">
-      <h2>
-        <span>💻 Remote Terminal Console</span>
-        <span id="adminB" class="badge badge-green">USER CONSOLE</span>
-      </h2>
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:14px;">
+          <div>
+            <h2 style="margin:0;display:flex;align-items:center;gap:10px;">
+              <span>💻 Remote Terminal Console</span>
+              <span id="adminB" class="badge badge-green">USER CONSOLE</span>
+            </h2>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Execute commands on single active PC or broadcast across entire fleet simultaneously</div>
+          </div>
+          
+          <!-- Broadcast Fleet Admin Mode Toggle -->
+          <div style="display:flex;align-items:center;gap:10px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);padding:6px 14px;border-radius:10px;">
+            <label style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:#f87171;cursor:pointer;">
+              <input type="checkbox" id="chkFleetBroadcastMode" style="width:16px;height:16px;cursor:pointer;">
+              ⚡ ALL-PC BROADCAST MODE (Admin Fleet Execution)
+            </label>
+          </div>
+        </div>
       <div id="termLocked" style="display:none;background:var(--surface-inset);padding:16px;border-radius:14px;border:1px solid var(--border-card);text-align:center">
         <div style="font-weight:700;margin-bottom:6px">🔒 Terminal Protected</div>
         <p style="color:var(--text-muted);font-size:13px;margin:0 0 12px">Re-enter master password to authorize administrative shell:</p>
@@ -1579,7 +1592,7 @@ function setHostConnectionStatus(online) {
   isServerOnline = online;
   const banner = $('reconnectBanner');
   if (!online) {
-    banner.style.display = 'block';
+    if (!window.location.hostname.includes('vercel.app') || !document.getElementById('login') || document.getElementById('login').style.display === 'none') { banner.style.display = 'block'; }
   } else {
     banner.style.display = 'none';
   }
@@ -2718,6 +2731,39 @@ async function termUnlock() {
 }
 async function termLock() { await api('terminal/lock', {}); termStatus(); }
 async function termRun() {
+  const isBroadcast = document.getElementById('chkFleetBroadcastMode') && document.getElementById('chkFleetBroadcastMode').checked;
+  const cmd = $('tcmd').value.trim();
+  if (!cmd) return;
+
+  if (isBroadcast) {
+    if (!confirm('⚠️ BROADCAST TO ALL FLEET PCs CONFIRMATION\n\nCommand: ' + cmd + '\n\nThis will execute simultaneously on ALL connected PCs. Proceed?')) {
+      return;
+    }
+    const out = $('tout');
+    out.textContent += '\n\n🌐 [FLEET BROADCAST INITIATED] Dispatching to all active PCs...\n> ' + cmd + '\n';
+    out.scrollTop = out.scrollHeight;
+    $('tcmd').value = '';
+
+    try {
+      const res = await fetch('/api/broadcast', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command: 'terminal', payload: { cmd: cmd } })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        out.textContent += `✅ ${data.message}\n`;
+        toast(`⚡ Broadcasted to ${data.broadcast_count} PC(s)!`);
+      } else {
+        out.textContent += `❌ Broadcast failed: ${data.error}\n`;
+      }
+      out.scrollTop = out.scrollHeight;
+    } catch (e) {
+      out.textContent += `❌ Network error dispatching broadcast: ${e.message}\n`;
+    }
+    return;
+  }
+
   const c = $('tcmd').value.trim();
   if (!c) return;
   const o = $('tout');

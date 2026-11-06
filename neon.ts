@@ -5,7 +5,7 @@ export default defineConfig({
   preview: {
     realtime: true,
   },
-  auth: false,
+  auth: true,
   // Branch policy: per-branch tuning
   branch: (branch) => {
     if (branch.isDefault) {

@@ -32,10 +32,13 @@ module.exports = async function handler(req, res) {
     // 2. POST: Register or Heartbeat from Host Device
     if (req.method === 'POST') {
       const body = req.body || {};
-      const id = String(body.id || body.device_id || '').trim();
+      // Fallback: If id is omitted (e.g. from setup.ps1 or curl reporting), derive id from host name or generate one
+      const rawHost = body.host || body.hostname || body.name || '';
+      const fallbackId = rawHost ? rawHost.toLowerCase().replace(/[^a-z0-9_-]/g, '-') : ('device-' + Date.now().toString(36));
+      const id = String(body.id || body.device_id || fallbackId).trim();
       const name = String(body.name || body.device_name || body.hostname || body.host || 'Unknown PC').trim();
-      const host_url = String(body.host_url || body.url || '').trim();
-      const tunnel_url = String(body.tunnel_url || '').trim();
+      const host_url = String(body.host_url || body.public_url || body.url || '').trim();
+      const tunnel_url = String(body.tunnel_url || body.public_url || '').trim();
       const lan_ip = String(body.lan_ip || '').trim();
       const port = Number(body.port) || 8765;
       const cpu = Number(body.cpu || (body.stats && body.stats.cpu) || 0);

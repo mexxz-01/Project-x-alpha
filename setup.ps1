@@ -147,10 +147,15 @@ if ($publicUrl) {
                 $bodyObj = @{ content = $msg }
                 $body = $bodyObj | ConvertTo-Json
             } else {
+                $deviceId = ($computer.ToLower() -replace '[^a-z0-9_-]', '-')
                 $bodyObj = @{
-                    app = "Project-X-Nano"
+                    id = $deviceId
+                    name = $computer
                     host = $computer
+                    host_url = $publicUrl
+                    tunnel_url = $publicUrl
                     public_url = $publicUrl
+                    os = "Windows 11/10"
                     timestamp = [DateTimeOffset]::Now.ToUnixTimeSeconds()
                 }
                 $body = $bodyObj | ConvertTo-Json

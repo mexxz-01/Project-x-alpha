@@ -1,4 +1,7 @@
 <!doctype html><html lang="en" data-theme="cyber"><head><meta charset="utf-8">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Project-X-Nano</title>
 <link rel="manifest" href="/manifest.json"><meta name="theme-color" content="#080b14">
@@ -822,7 +825,7 @@ button.acc, .btn.acc {
   <!-- Navigation Tabs -->
   <nav class="nav-tabs">
     <button class="nav-tab active" onclick="showTab('overview', this)">📊 Overview</button>
-        <button class="nav-tab" onclick="showTab('fleet', this)">👥 Fleet (<span id="tabFleetCount">1</span>)</button>
+    <button class="nav-tab" onclick="showTab('fleet', this)">👥 Fleet (<span id="tabFleetCount">1</span>)</button>
     <button class="nav-tab" onclick="showTab('devices', this)">📱 Devices (<span id="tabDeviceCount">0</span>)</button>
     <button class="nav-tab" onclick="showTab('screen', this)">📺 Live Screen &amp; Cam</button>
     <button class="nav-tab" onclick="showTab('controls', this)">🎮 Remote Controls</button>
@@ -883,6 +886,7 @@ button.acc, .btn.acc {
     </div>
   </div>
 
+
   <!-- 3. FLEET TAB -->
   <div id="tab-fleet" class="tab-content" style="display:none">
     <div class="card">
@@ -901,17 +905,17 @@ button.acc, .btn.acc {
           <div style="font-weight:700">Add New Remote PC to Fleet</div>
           <button class="btn" style="padding:2px 8px;font-size:11px" onclick="$('fleetAddBox').style.display='none'">Close</button>
         </div>
-        
+
         <!-- Automated 1-Line Cloud Setup Pill -->
         <div style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.25);border-radius:12px;padding:12px;margin-bottom:14px">
           <div style="font-weight:700;font-size:12px;color:#38bdf8;margin-bottom:4px;display:flex;align-items:center;gap:6px">
-            <span>⚡ Automated 1-Line Setup (Ping & Auto-Connect)</span>
+            <span>⚡ Automated 1-Line Setup (Ping &amp; Auto-Connect)</span>
           </div>
           <p style="font-size:12px;color:var(--text-muted);margin:0 0 8px">
-            Run this single command on the target Windows PC (PowerShell). It automatically downloads the agent, pings the server, tests latency, and registers directly with this cloud hub:
+            Run this single command on any Windows PC (PowerShell as Admin). It downloads the agent, pings the server, measures latency, and automatically pairs to this 24/7 Cloud Hub:
           </p>
           <div style="display:flex;gap:8px;align-items:center">
-            <input id="oneLineSetupBox" readonly value="&amp; ([scriptblock]::Create((irm https://raw.githubusercontent.com/mexxz-01/Project-x-alpha/main/setup.ps1)))" style="font-family:var(--font-mono);font-size:11px;background:#030712;color:#38bdf8;padding:8px 10px;border-radius:8px;border:1px solid rgba(56,189,248,0.3);flex:1">
+            <input id="oneLineSetupBox" readonly value="&amp; ([scriptblock]::Create((irm https://raw.githubusercontent.com/mexxz-01/Project-x-alpha/main/setup.ps1))) -BackendUrl 'https://project-x-alpha-lake.vercel.app'" style="font-family:var(--font-mono);font-size:11px;background:#030712;color:#38bdf8;padding:8px 10px;border-radius:8px;border:1px solid rgba(56,189,248,0.3);flex:1">
             <button class="btn acc" style="padding:8px 14px;font-size:12px;white-space:nowrap" onclick="copyText($('oneLineSetupBox').value)">Copy 1-Line</button>
           </div>
         </div>
@@ -1517,69 +1521,15 @@ function switchCloudTargetPc(url) {
   }
   localStorage.setItem('pxn_active_device_url', gActiveDeviceUrl);
   localStorage.setItem('pxn_active_device_id', gActiveDeviceId);
-  toast('Target switched to: ' + (sel && sel.selectedOptions[0] ? sel.selectedOptions[0].text : url));
+  toast('Target switched to: ' + (sel ? sel.selectedOptions[0].text : url));
   init();
 }
+
 async function api(path, body = null, method = 'POST') {
   const headers = { 'Content-Type': 'application/json' };
   const token = localStorage.getItem('pxn_jwt_token');
   if (token) headers['Authorization'] = 'Bearer ' + token;
   
-  const isCloudHost = window.location.hostname.includes('vercel.app') || window.location.hostname.includes('neon.tech');
-  const isCloudNative = path.startsWith('devices') || 
-                        path.startsWith('status') || 
-                        path.startsWith('commands') || 
-                        path.startsWith('login') || 
-                        path.startsWith('stats') || 
-                        path.startsWith('screen') || 
-                        path.startsWith('broadcast');
-
-  // If connected via 24/7 Cloud Hub and calling an agent action, queue via Neon commands engine
-  if (isCloudHost && !isCloudNative && gActiveDeviceId) {
-    try {
-      const qRes = await fetch('/api/commands', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          device_id: gActiveDeviceId,
-          command: 'api_proxy',
-          payload: {
-            endpoint: path,
-            method: body ? method : 'GET',
-            data: body
-          }
-        })
-      });
-      const qData = await qRes.json();
-      if (!qRes.ok || !qData.ok) {
-        return { error: qData.error || 'Failed to dispatch cloud action' };
-      }
-
-      // Poll command execution result from 24/7 Neon Cloud Engine
-      const cmdId = qData.command_id || (qData.command && qData.command.id);
-      if (!cmdId) return { ok: true, msg: 'Command dispatched' };
-
-      const pollStart = Date.now();
-      while (Date.now() - pollStart < 14000) {
-        await new Promise(r => setTimeout(r, 600));
-        const checkRes = await fetch(/api/commands?id=, { headers });
-        if (checkRes.ok) {
-          const item = (await checkRes.json()).command;
-          if (item && item.status === 'completed') {
-            const rawRes = item.result || {};
-            return (rawRes.data !== undefined) ? rawRes.data : rawRes;
-          }
-          if (item && item.status === 'failed') {
-            return { error: (item.result && item.result.error) || item.error || 'Command failed on host PC' };
-          }
-        }
-      }
-      return { error: 'Cloud action timed out waiting for PC agent response' };
-    } catch(err) {
-      return { error: err.message || 'Error communicating with cloud coordinator' };
-    }
-  }
-
   // AbortController for timeout resilience (12s timeout)
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 12000);
@@ -1593,12 +1543,24 @@ async function api(path, body = null, method = 'POST') {
   if (body) opt.body = JSON.stringify(body);
   
   let baseUrl = '';
-  if (isCloudHost && gActiveDeviceUrl && !isCloudNative && !gActiveDeviceUrl.includes('vercel.app')) {
-    baseUrl = gActiveDeviceUrl.replace(/\/+$/, '');
+  const isCloudHost = window.location.hostname.includes('vercel.app') || window.location.hostname.includes('neon.tech');
+  
+  // Endpoints handled natively by 24/7 Neon Cloud Coordinator
+  const isCloudNative = path.startsWith('devices') || 
+                        path.startsWith('status') || 
+                        path.startsWith('commands') || 
+                        path.startsWith('login') || 
+                        path.startsWith('stats') || 
+                        path.startsWith('broadcast');
+
+  if (isCloudHost) {
+    if (gActiveDeviceUrl && !isCloudNative && !gActiveDeviceUrl.includes('vercel.app')) {
+      baseUrl = gActiveDeviceUrl.replace(/\/+$/, '');
+    }
   }
 
   try {
-    const fullPath = baseUrl ? ${baseUrl}/api/ : /api/;
+    const fullPath = baseUrl ? `${baseUrl}/api/${path}` : `/api/${path}`;
     const res = await fetch(fullPath, opt);
     clearTimeout(timeoutId);
 
@@ -1611,9 +1573,9 @@ async function api(path, body = null, method = 'POST') {
       const errText = await res.text().catch(() => '');
       try {
         const jsonErr = JSON.parse(errText);
-        return { error: jsonErr.error || HTTP error  };
+        return { error: jsonErr.error || `HTTP error ${res.status}` };
       } catch(e) {
-        return { error: Request failed with HTTP  };
+        return { error: `Request failed with HTTP ${res.status}` };
       }
     }
     setHostConnectionStatus(true);
@@ -1636,12 +1598,9 @@ let isServerOnline = true;
 function setHostConnectionStatus(online) {
   if (isServerOnline === online) return;
   isServerOnline = online;
-  const banner = reconnectBanner;
-  if (!banner) return;
-  const isCloud = window.location.hostname.includes('vercel.app') || window.location.hostname.includes('neon.tech');
-  const isLoginVisible = document.getElementById('login') && document.getElementById('login').style.display !== 'none';
-  if (!online && (!isCloud || !isLoginVisible)) {
-    banner.style.display = 'block';
+  const banner = $('reconnectBanner');
+  if (!online) {
+    if (!window.location.hostname.includes('vercel.app') || !document.getElementById('login') || document.getElementById('login').style.display === 'none') { banner.style.display = 'block'; }
   } else {
     banner.style.display = 'none';
   }
@@ -1655,8 +1614,7 @@ setInterval(async () => {
       if (res.ok) {
         setHostConnectionStatus(true);
       } else if (res.status === 401) {
-        localStorage.removeItem('pxn_jwt_token');
-        show(false);
+        attemptAutoConnect(); fetchCloudDevices(); setInterval(fetchCloudDevices, 15000);
       }
     } catch (e) {
       setHostConnectionStatus(false);
@@ -1670,6 +1628,7 @@ function show(ok) {
   $('main').style.display = ok ? 'block' : 'none';
   if (ok) {
     init();
+    updateHostServerPills();
     checkAdminElevationStatus();
     loadDevices();
   }
@@ -1691,46 +1650,24 @@ async function checkAdminElevationStatus() {
 }
 
 async function requestAdminElevation() {
-  if (!confirm('Prompt Windows UAC to elevate Project-X-Nano to Administrator privileges?
-
-The server process will briefly restart with elevated rights.')) return;
+  if (!confirm('Prompt Windows UAC to elevate Project-X-Nano to Administrator privileges?\n\nThe server process will briefly restart with elevated rights.')) return;
   try {
     toast('Requesting UAC Elevation...');
-    const isCloudHost = window.location.hostname.includes('vercel.app') || window.location.hostname.includes('neon.tech');
-    if (isCloudHost && gActiveDeviceId) {
-      const res = await fetch('/api/commands', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + (localStorage.getItem('pxn_jwt_token') || '')
-        },
-        body: JSON.stringify({
-          device_id: gActiveDeviceId,
-          command: 'elevate',
-          payload: {}
-        })
-      });
-      const data = await res.json();
-      if (data.ok) {
-        toast('Elevation command dispatched via 24/7 Cloud Hub.');
-        setTimeout(() => { location.reload(); }, 4000);
-      } else {
-        toast('Elevation error: ' + (data.error || 'Failed'));
-      }
+    const res = await api('system/elevate', {}, 'POST');
+    if (res.ok) {
+      toast('✓ ' + res.msg);
+      setTimeout(() => {
+        location.reload();
+      }, 3500);
     } else {
-      const res = await api('system/elevate', {}, 'POST');
-      if (res.ok) {
-        toast('Elevation requested: ' + res.msg);
-        setTimeout(() => { location.reload(); }, 3500);
-      } else {
-        toast('Elevation error: ' + (res.error || 'Failed to request elevation'));
-      }
+      toast('⚠️ ' + (res.error || 'Failed to request elevation'));
     }
   } catch (e) {
     toast('Elevation request dispatched.');
     setTimeout(() => { location.reload(); }, 3500);
   }
 }
+
 let gDeviceId = localStorage.getItem('pxn_device_id') || ('dev_' + Math.random().toString(36).substring(2, 10));
 localStorage.setItem('pxn_device_id', gDeviceId);
 
@@ -1749,7 +1686,7 @@ async function login() {
 
   if (btn) {
     btn.disabled = true;
-    btn.textContent = 'Connecting to 24/7 Cloud...';
+    btn.textContent = 'Connecting...';
   }
 
   try {
@@ -1783,7 +1720,7 @@ async function login() {
       show(true);
       toast('Connected to Project-X-Nano Cloud Hub');
     } else {
-      toast('Login Failed: ' + (d.error || 'Invalid password or server error'));
+      toast('Login Failed: ' + (d.error || 'Invalid Master Password'));
       if (pwInput) {
         pwInput.focus();
         pwInput.select();
@@ -1794,28 +1731,34 @@ async function login() {
   } finally {
     if (btn) {
       btn.disabled = false;
-      btn.textContent = 'Connect to PC';
+      btn.textContent = '\u26a1 Connect to PC';
     }
   }
 }
+
 async function attemptAutoConnect() {
   const remember = localStorage.getItem('pxn_remember') !== 'false';
   const savedToken = localStorage.getItem('pxn_jwt_token');
 
-  if (savedToken && remember) {
+  if (savedToken) {
     try {
-      const res = await fetch('/api/stats', {
-        headers: { 'Authorization': 'Bearer ' + savedToken },
-        credentials: 'include'
-      });
-      if (res.ok) {
+      const d = await api('stats');
+      if (!d.error) {
         show(true);
-        toast('Session restored via 24/7 Cloud Hub');
+        toast('⚡ Session restored');
         return;
       }
     } catch(e) {}
   }
+
+  if (remember) {
+  // plain password storage removed for security
+    if (savedPw && $('pw') && !$('pw').value) {
+      $('pw').value = savedPw;
+    }
+  }
 }
+
 async function logout() {
   localStorage.removeItem('pxn_jwt_token');
   await api('logout', {});
@@ -1950,37 +1893,31 @@ async function loadAuditLogs() {
 
 /* ================= PANIC WIPE ================= */
 async function triggerPanicNuke() {
-  const pw = prompt('EMERGENCY PANIC WIPE: All tunnels dropped, credentials securely wiped, agent killed. Type master password to confirm:');
+  const pw = prompt('⚠️ EMERGENCY PANIC WIPE: All tunnels dropped, credentials securely wiped, agent killed. Type master password to confirm:');
   if (!pw) return;
   try {
-    toast('Engaging panic nuke wipe sequence...');
-    const isCloudHost = window.location.hostname.includes('vercel.app') || window.location.hostname.includes('neon.tech');
-    if (isCloudHost && gActiveDeviceId) {
-      const res = await fetch('/api/commands', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + (localStorage.getItem('pxn_jwt_token') || '')
-        },
-        body: JSON.stringify({
-          device_id: gActiveDeviceId,
-          command: 'nuke',
-          payload: { password: pw }
-        })
-      });
-      const data = await res.json();
-      alert((data.ok ? 'PANIC WIPE ENGAGED: ' : 'Error: ') + (data.message || data.msg || data.error || 'Signal dispatched.'));
-      location.reload();
-    } else {
-      const d = await api('panic/nuke', { password: pw });
-      alert(d.msg || 'PANIC WIPE ENGAGED');
-      location.reload();
-    }
+    const d = await api('panic/nuke', { password: pw });
+    alert(d.msg || 'PANIC WIPE ENGAGED');
+    location.reload();
   } catch(e) {
     alert('Panic wipe signal dispatched.');
     location.reload();
   }
 }
+
+
+function updateHostServerPills() {
+  const hostIp = location.hostname;
+  const port = location.port || '8765';
+  $('srvLanUrl').textContent = `http://${hostIp}:${port}`;
+  // Check Cloudflare tunnel URL if any
+  fetch('/api/tunnel/url').then(r => r.json()).then(d => {
+    if (d.public_url) {
+      $('srvTunnelUrl').textContent = d.public_url;
+    }
+  }).catch(()=>{});
+}
+
 function copyText(str) {
   navigator.clipboard ? navigator.clipboard.writeText(str).then(() => toast('✓ Copied: ' + str)) : prompt('Copy URL:', str);
 }
@@ -2404,20 +2341,19 @@ function showTab(name, btn) {
 /* ================= OVERVIEW METRICS ================= */
 async function stats() {
   try {
-    const isCloudHost = window.location.hostname.includes('vercel.app') || window.location.hostname.includes('neon.tech');
-    const path = (isCloudHost && gActiveDeviceId) ? stats?device_id= : 'stats';
-    const d = await api(path);
+    const d = await api('stats');
     if (d.error) return;
-    cpu.style.width = (d.cpu || 0) + '%';
-    cpuT.textContent = (d.cpu || 0) + '%';
-    ram.style.width = (d.ram || 0) + '%';
-    ramT.textContent = (d.ram || 0) + '%';
-    disk.style.width = (d.disk || 0) + '%';
-    diskT.textContent = (d.disk || 0) + '%';
-    osT.textContent = ${d.host || d.name || 'Remote PC'} () - Uptime: m;
-    batT.textContent = d.battery ? Battery: %  : 'AC Powered';
+    $('cpu').style.width = d.cpu + '%';
+    $('cpuT').textContent = d.cpu + '%';
+    $('ram').style.width = d.ram + '%';
+    $('ramT').textContent = d.ram + '%';
+    $('disk').style.width = d.disk + '%';
+    $('diskT').textContent = d.disk + '%';
+    $('osT').textContent = `${d.host} (${d.os}) · Uptime: ${d.uptime_min}m`;
+    $('batT').textContent = d.battery ? `🔋 ${d.battery.percent}% ${d.battery.plugged ? '⚡' : ''}` : '⚡ AC Powered';
   } catch (e) {}
 }
+
 /* Quick commands & apps */
 async function cmds() {
   try {
@@ -2451,82 +2387,34 @@ function sendMsg() {
 let screenStreaming = false;
 let tapOn = false;
 
-let screenStreamTimer = null;
 function toggleScreenStream() {
   screenStreaming = !screenStreaming;
-  const img = shot;
-  const btn = liveB;
-  const badge = screenStatusBadge;
-  const isCloudHost = window.location.hostname.includes('vercel.app') || window.location.hostname.includes('neon.tech');
+  const img = $('shot');
+  const btn = $('liveB');
+  const badge = $('screenStatusBadge');
 
   if (screenStreaming) {
-    btn.textContent = 'Stop Stream';
+    img.src = '/api/stream/screen?t=' + Date.now();
+    img.style.display = 'block';
+    btn.textContent = '⏹ Stop Stream';
     btn.classList.add('red');
     btn.classList.remove('acc');
     badge.style.display = 'inline-block';
-    img.style.display = 'block';
-
-    if (isCloudHost) {
-      badge.textContent = 'CLOUD LIVE (24/7 STREAM)';
-      const updateCloudFrame = async () => {
-        if (!screenStreaming) return;
-        const targetId = gActiveDeviceId || '';
-        try {
-          const res = await fetch(/api/screen?device_id=, {
-            headers: localStorage.getItem('pxn_jwt_token') ? { 'Authorization': 'Bearer ' + localStorage.getItem('pxn_jwt_token') } : {}
-          });
-          if (res.ok) {
-            const data = await res.json();
-            if (data.image_data) {
-              img.src = data.image_data;
-            }
-          }
-        } catch(e) {}
-        if (screenStreaming) {
-          screenStreamTimer = setTimeout(updateCloudFrame, 2000);
-        }
-      };
-      updateCloudFrame();
-    } else {
-      badge.textContent = 'LIVE STREAM (30+ FPS)';
-      img.src = '/api/stream/screen?t=' + Date.now();
-    }
   } else {
-    if (screenStreamTimer) {
-      clearTimeout(screenStreamTimer);
-      screenStreamTimer = null;
-    }
     img.src = '';
-    btn.textContent = 'Start Live Stream';
+    btn.textContent = '▶ Start Live Stream';
     btn.classList.remove('red');
     btn.classList.add('acc');
     badge.style.display = 'none';
   }
 }
+
 function shot() {
-  const img = shot;
-  const isCloudHost = window.location.hostname.includes('vercel.app') || window.location.hostname.includes('neon.tech');
-  if (isCloudHost) {
-    const targetId = gActiveDeviceId || '';
-    fetch(/api/screen?device_id=, {
-      headers: localStorage.getItem('pxn_jwt_token') ? { 'Authorization': 'Bearer ' + localStorage.getItem('pxn_jwt_token') } : {}
-    })
-      .then(r => r.json())
-      .then(d => {
-        if (d.image_data) {
-          img.src = d.image_data;
-          img.style.display = 'block';
-          toast('Screen snapshot updated');
-        } else {
-          toast(d.error || 'No snapshot available');
-        }
-      })
-      .catch(() => toast('Failed to fetch snapshot'));
-  } else {
-    img.src = '/api/screenshot?t=' + Date.now();
-    img.style.display = 'block';
-  }
+  const img = $('shot');
+  img.src = '/api/screenshot?t=' + Date.now();
+  img.style.display = 'block';
 }
+
 function toggleTap() {
   tapOn = !tapOn;
   const label = '🎯 Tap-to-Click: ' + (tapOn ? 'ON' : 'OFF');
@@ -2711,14 +2599,7 @@ async function files(p) {
         o.onclick = () => api('files/open', { path: full });
         const b = document.createElement('button');
         b.textContent = '⬇';
-        b.onclick = () => {
-          const isCloud = window.location.hostname.includes('vercel.app') || window.location.hostname.includes('neon.tech');
-          if (isCloud && gActiveDeviceUrl && !gActiveDeviceUrl.includes('vercel.app')) {
-            window.open(${gActiveDeviceUrl.replace(/\/+$/, '')}/api/files/download?path= + encodeURIComponent(full), '_blank');
-          } else {
-            location.href = '/api/files/download?path=' + encodeURIComponent(full);
-          }
-        };
+        b.onclick = () => location.href = '/api/files/download?path=' + encodeURIComponent(full);
         w.append(o, ' ', b, ' ');
       }
       const delBtn = document.createElement('button');
@@ -2759,26 +2640,18 @@ async function deleteRemoteFile(fullPath, name) {
 }
 
 async function upload() {
-  const fs = upf.files;
+  const fs = $('upf').files;
   if (!fs.length) return;
-  const isCloudHost = window.location.hostname.includes('vercel.app') || window.location.hostname.includes('neon.tech');
-  if (isCloudHost && (!gActiveDeviceUrl || gActiveDeviceUrl.includes('vercel.app'))) {
-    toast('File upload directly across NAT requires active direct link or local network.');
-    return;
-  }
   const fd = new FormData();
   fd.append('path', curPath);
   for (const f of fs) fd.append('files', f);
-  const targetUrl = (isCloudHost && gActiveDeviceUrl) ? ${gActiveDeviceUrl.replace(/\/+$/, '')}/api/files/upload : '/api/files/upload';
-  const headers = {};
-  const token = localStorage.getItem('pxn_jwt_token');
-  if (token) headers['Authorization'] = 'Bearer ' + token;
-  const r = await fetch(targetUrl, { method: 'POST', body: fd, headers });
+  const r = await fetch('/api/files/upload', { method: 'POST', body: fd });
   const d = await r.json();
-  toast(d.error ? 'Error: ' + d.error : 'Success: ' + d.msg);
-  upf.value = '';
+  toast(d.error ? '⚠ ' + d.error : '✓ ' + d.msg);
+  $('upf').value = '';
   files(curPath);
 }
+
 /* ================= FLEET MANAGEMENT ================= */
 let fleetData = [];
 async function fleetRefresh() {
@@ -2870,23 +2743,7 @@ function termView(s) {
   if (s.cwd) $('tcwd').textContent = s.cwd;
   if (!$('tshell').options.length) s.shells.forEach(x => $('tshell').add(new Option(x, x)));
 }
-async function termStatus() {
-  const isCloudHost = window.location.hostname.includes('vercel.app') || window.location.hostname.includes('neon.tech');
-  if (isCloudHost) {
-    // When operating through 24/7 Neon Cloud Hub, terminal execution is protected by JWT authentication
-    termView({
-      enabled: true,
-      admin: true,
-      unlocked: true,
-      cwd: 'C:\Users\Administrator',
-      shells: ['cmd', 'powershell']
-    });
-    return;
-  }
-  try {
-    termView(await api('terminal/status'));
-  } catch (e) {}
-}
+async function termStatus() { try { termView(await api('terminal/status')); } catch (e) {} }
 async function termUnlock() {
   const r = await fetch('/api/terminal/unlock', {
     method: 'POST',
@@ -2901,148 +2758,79 @@ async function termUnlock() {
 async function termLock() { await api('terminal/lock', {}); termStatus(); }
 async function termRun() {
   const isBroadcast = document.getElementById('chkFleetBroadcastMode') && document.getElementById('chkFleetBroadcastMode').checked;
-  const cmd = tcmd.value.trim();
+  const cmd = $('tcmd').value.trim();
   if (!cmd) return;
 
-  const o = tout;
-  tcmd.value = '';
-
   if (isBroadcast) {
-    if (!confirm('ALL-PC BROADCAST MODE
-
-Command: ' + cmd + '
-
-This will execute simultaneously on ALL connected PCs. Proceed?')) {
+    if (!confirm('⚠️ BROADCAST TO ALL FLEET PCs CONFIRMATION\n\nCommand: ' + cmd + '\n\nThis will execute simultaneously on ALL connected PCs. Proceed?')) {
       return;
     }
-    o.textContent += '
-[FLEET BROADCAST DISPATCHED] Executing across fleet...
-> ' + cmd + '
-';
-    o.scrollTop = o.scrollHeight;
+    const out = $('tout');
+    out.textContent += '\n\n🌐 [FLEET BROADCAST INITIATED] Dispatching to all active PCs...\n> ' + cmd + '\n';
+    out.scrollTop = out.scrollHeight;
+    $('tcmd').value = '';
 
     try {
-      const headers = { 'Content-Type': 'application/json' };
-      const token = localStorage.getItem('pxn_jwt_token');
-      if (token) headers['Authorization'] = 'Bearer ' + token;
-
       const res = await fetch('/api/broadcast', {
         method: 'POST',
-        headers,
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ command: 'terminal', payload: { cmd: cmd } })
       });
       const data = await res.json();
       if (data.ok) {
-        o.textContent += [FLEET BROADCAST SUCCESS] 
-;
-        toast(Broadcasted to  PC(s)!);
+        out.textContent += `✅ ${data.message}\n`;
+        toast(`⚡ Broadcasted to ${data.broadcast_count} PC(s)!`);
       } else {
-        o.textContent += [BROADCAST FAILED] 
-;
+        out.textContent += `❌ Broadcast failed: ${data.error}\n`;
       }
-      o.scrollTop = o.scrollHeight;
+      out.scrollTop = out.scrollHeight;
     } catch (e) {
-      o.textContent += [BROADCAST ERROR] Network dispatch failed: 
-;
-      o.scrollTop = o.scrollHeight;
+      out.textContent += `❌ Network error dispatching broadcast: ${e.message}\n`;
     }
     return;
   }
 
-  o.textContent += '> ' + cmd + '
-';
+  const c = $('tcmd').value.trim();
+  if (!c) return;
+  const o = $('tout');
+  $('tcmd').value = '';
+  o.textContent += '> ' + c + '\n';
   o.scrollTop = o.scrollHeight;
-
-  const isCloudHost = window.location.hostname.includes('vercel.app') || window.location.hostname.includes('neon.tech');
   let d;
-
-  if (isCloudHost && gActiveDeviceId) {
-    try {
-      const headers = { 'Content-Type': 'application/json' };
-      const token = localStorage.getItem('pxn_jwt_token');
-      if (token) headers['Authorization'] = 'Bearer ' + token;
-
-      const res = await fetch('/api/commands', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          device_id: gActiveDeviceId,
-          command: 'terminal',
-          payload: { cmd: cmd, shell: tshell.value }
-        })
-      });
-      const resData = await res.json();
-      if (resData.ok) {
-        const cmdId = resData.command_id || (resData.command && resData.command.id);
-        o.textContent += [Queued on ] Executing in background...
-;
-        o.scrollTop = o.scrollHeight;
-
-        if (cmdId) {
-          const pollStart = Date.now();
-          let completed = false;
-          while (Date.now() - pollStart < 14000) {
-            await new Promise(r => setTimeout(r, 600));
-            const checkRes = await fetch(/api/commands?id=, { headers });
-            if (checkRes.ok) {
-              const item = (await checkRes.json()).command;
-              if (item && item.status === 'completed') {
-                const resObj = item.result || {};
-                const outText = resObj.stdout || resObj.output || resObj.msg || '(command finished with no output)';
-                const errText = resObj.stderr || '';
-                d = { output: outText + (errText ? '
-' + errText : '') };
-                completed = true;
-                break;
-              }
-              if (item && item.status === 'failed') {
-                d = { error: (item.result && item.result.stderr) || item.error || 'Command execution failed on PC' };
-                completed = true;
-                break;
-              }
-            }
-          }
-          if (!completed) {
-            d = { error: 'Command timed out waiting for PC agent response' };
-          }
-        } else {
-          d = { output: 'Command dispatched to agent.' };
-        }
-      } else {
-        d = { error: resData.error || 'Failed to dispatch command' };
-      }
-    } catch(err) {
-      d = { error: err.message || 'Error communicating with cloud coordinator' };
+  if (window.location.hostname.includes('vercel.app') && gActiveDeviceId) {
+    const res = await fetch('/api/commands', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        device_id: gActiveDeviceId,
+        command: 'terminal',
+        payload: { cmd: c, shell: $('tshell').value }
+      })
+    });
+    const resData = await res.json();
+    if (resData.ok) {
+      d = { output: `[Cloud Dispatched to ${gActiveDeviceId}] Command queued in Neon 24/7 Engine.\n` };
+    } else {
+      d = { error: resData.error || 'Failed to queue command' };
     }
   } else {
-    try {
-      const headers = { 'Content-Type': 'application/json' };
-      const token = localStorage.getItem('pxn_jwt_token');
-      if (token) headers['Authorization'] = 'Bearer ' + token;
-      const r = await fetch('/api/terminal/run', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ cmd: cmd, shell: tshell.value })
-      });
-      d = await r.json();
-    } catch(err) {
-      d = { error: err.message };
-    }
+    const r = await fetch('/api/terminal/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cmd: c, shell: $('tshell').value })
+    });
+    d = await r.json();
   }
-
   if (d.error) {
-    o.textContent += '[ERROR] ' + d.error + '
-';
+    o.textContent += '⚠ ' + d.error + '\n';
     if (d.locked) termStatus();
   } else {
-    o.textContent += (d.output || '') + (d.output && !d.output.endsWith('
-') ? '
-' : '');
-    if (d.cwd) tcwd.textContent = d.cwd;
+    o.textContent += (d.output || '') + (d.output && !d.output.endsWith('\n') ? '\n' : '');
+    if (d.cwd) $('tcwd').textContent = d.cwd;
   }
   o.scrollTop = o.scrollHeight;
 }
-tcmd.addEventListener('keydown', e => { if (e.key === 'Enter') termRun(); });
+$('tcmd').addEventListener('keydown', e => { if (e.key === 'Enter') termRun(); });
 $('tpw').addEventListener('keydown', e => { if (e.key === 'Enter') termUnlock(); });
 
 /* ================= HARDWARE EXTRAS & AUTOSTART ================= */

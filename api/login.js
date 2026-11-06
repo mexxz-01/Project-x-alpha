@@ -66,7 +66,10 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    const body = req.body || {};
+    let body = req.body || {};
+    if (typeof body === 'string') {
+      try { body = JSON.parse(body); } catch(e) { body = {}; }
+    }
     const pw = String(body.password || '').trim();
 
     if (!pw) {

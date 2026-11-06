@@ -8,8 +8,6 @@ screen-brightness-control; sys_platform == "win32"
 opencv-python-headless
 pycaw; sys_platform == "win32"
 comtypes; sys_platform == "win32"
-pyotp
-qrcode[pil]
 cryptography
 pyjwt
 pyngrok

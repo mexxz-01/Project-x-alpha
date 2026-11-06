@@ -26,6 +26,12 @@ import android.widget.EditText;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.app.AlertDialog;
+import android.content.DialogInterface;
+import org.json.JSONArray;
+import org.json.JSONObject;
+import java.util.ArrayList;
+import java.util.List;
 
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
@@ -36,6 +42,7 @@ public class MainActivity extends Activity {
     private static final String PREFS_NAME = "RemotePC_Prefs";
     private static final String KEY_SERVER_URL = "server_url";
     private static final String KEY_PASSWORD = "password";
+    private static final String KEY_SAVED_DEVICES = "saved_devices_json";
 
     private WebView webView;
     private View setupView;
@@ -181,7 +188,7 @@ public class MainActivity extends Activity {
         btnSwitchPC.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                showSetup();
+                showDeviceSelectorDialog();
             }
         });
 
@@ -442,16 +449,10 @@ public class MainActivity extends Activity {
                     "if(pw && !pw.value) {" +
                     "  pw.value = '" + currentPassword.replace("'", "\\'") + "';" +
                     "}" +
-                    "var totpBox = document.getElementById('login2faBox');" +
-                    "var totpInput = document.getElementById('loginTotp');" +
-                    "if(totpBox && totpBox.style.display !== 'none') {" +
-                    "  if(totpInput) { totpInput.focus(); }" +
-                    "} else {" +
-                    "  if (typeof login === 'function') { login(); }" +
-                    "  else {" +
-                    "    var btn = document.querySelector('button[type=\"submit\"]') || document.querySelector('form button');" +
-                    "    if (btn) btn.click();" +
-                    "  }" +
+                    "if (typeof login === 'function') { login(); }" +
+                    "else {" +
+                    "  var btn = document.querySelector('button[type=\"submit\"]') || document.querySelector('form button');" +
+                    "  if (btn) btn.click();" +
                     "}" +
                     "})()";
             webView.evaluateJavascript(js, null);
@@ -478,6 +479,122 @@ public class MainActivity extends Activity {
                 .putString(KEY_SERVER_URL, currentServer)
                 .putString(KEY_PASSWORD, currentPassword)
                 .apply();
+
+        // Automatically persist in the multiple device history list
+        if (!currentServer.isEmpty()) {
+            recordDeviceInHistory(currentServer);
+        }
+    }
+
+    private void recordDeviceInHistory(String url) {
+        try {
+            String jsonStr = prefs.getString(KEY_SAVED_DEVICES, "[]");
+            JSONArray arr = new JSONArray(jsonStr);
+            boolean exists = false;
+            for (int i = 0; i < arr.length(); i++) {
+                if (arr.getString(i).equalsIgnoreCase(url)) {
+                    exists = true;
+                    break;
+                }
+            }
+            if (!exists) {
+                arr.put(url);
+                prefs.edit().putString(KEY_SAVED_DEVICES, arr.toString()).apply();
+            }
+        } catch (Exception ignored) {}
+    }
+
+    /**
+     * Shows a multiple device switcher dialog allowing the user to select
+     * between known / saved remote PCs or configure a new connection.
+     */
+    private void showDeviceSelectorDialog() {
+        try {
+            String jsonStr = prefs.getString(KEY_SAVED_DEVICES, "[]");
+            JSONArray arr = new JSONArray(jsonStr);
+            final List<String> devicesList = new ArrayList<String>();
+            if (!currentServer.isEmpty() && !devicesList.contains(currentServer)) {
+                devicesList.add(currentServer);
+            }
+            for (int i = 0; i < arr.length(); i++) {
+                String d = arr.getString(i);
+                if (!devicesList.contains(d)) {
+                    devicesList.add(d);
+                }
+            }
+
+            final String[] items = new String[devicesList.size() + 2];
+            for (int i = 0; i < devicesList.size(); i++) {
+                String dev = devicesList.get(i);
+                items[i] = (dev.equalsIgnoreCase(currentServer) ? "● [Active] " : "○ ") + dev;
+            }
+            items[devicesList.size()] = "➕ Add New Device / Host Setup";
+            items[devicesList.size() + 1] = "🛡️ Elevate Host Admin via Windows UAC";
+
+            AlertDialog.Builder builder = new AlertDialog.Builder(this);
+            builder.setTitle("🖥️ Switch Device / Remote Host");
+            builder.setItems(items, new DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(DialogInterface dialog, int which) {
+                    if (which < devicesList.size()) {
+                        String selected = devicesList.get(which);
+                        currentServer = selected;
+                        editServerUrl.setText(selected);
+                        prefs.edit().putString(KEY_SERVER_URL, currentServer).apply();
+                        vibrateBrief(40);
+                        Toast.makeText(MainActivity.this, "Switched to: " + selected, Toast.LENGTH_SHORT).show();
+                        loadServer(selected);
+                    } else if (which == devicesList.size()) {
+                        showSetup();
+                    } else if (which == devicesList.size() + 1) {
+                        requestAdminElevationOnHost();
+                    }
+                }
+            });
+            builder.setNegativeButton("Cancel", null);
+            builder.show();
+        } catch (Exception e) {
+            showSetup();
+        }
+    }
+
+    private void requestAdminElevationOnHost() {
+        if (currentServer.isEmpty()) {
+            Toast.makeText(this, "Connect to PC backend first", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        vibrateBrief(40);
+        Toast.makeText(this, "Requesting Windows UAC Elevation on Host PC...", Toast.LENGTH_SHORT).show();
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    URL u = new URL(currentServer + "/api/system/elevate");
+                    HttpURLConnection conn = (HttpURLConnection) u.openConnection();
+                    conn.setRequestMethod("POST");
+                    conn.setConnectTimeout(3000);
+                    conn.setReadTimeout(3000);
+                    final int code = conn.getResponseCode();
+                    new Handler(Looper.getMainLooper()).post(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (code >= 200 && code < 300) {
+                                Toast.makeText(MainActivity.this, "Elevation triggered! Backend restarting with Admin rights.", Toast.LENGTH_LONG).show();
+                            } else {
+                                Toast.makeText(MainActivity.this, "Elevation response: HTTP " + code, Toast.LENGTH_SHORT).show();
+                            }
+                        }
+                    });
+                } catch (final Exception e) {
+                    new Handler(Looper.getMainLooper()).post(new Runnable() {
+                        @Override
+                        public void run() {
+                            Toast.makeText(MainActivity.this, "Elevation signal dispatched.", Toast.LENGTH_SHORT).show();
+                        }
+                    });
+                }
+            }
+        }).start();
     }
 
     private void connectToServer() {

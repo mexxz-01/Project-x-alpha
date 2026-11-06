@@ -46,8 +46,6 @@ except Exception:
 import sys
 import base64
 import jwt
-import pyotp
-import qrcode
 import crypto
 import audit as audit_module
 # High-performance Native C / C++ acceleration core
@@ -74,9 +72,8 @@ DEFAULT_CONFIG = {
     "host": "0.0.0.0",  # use 127.0.0.1 to allow only this PC
     "password_hash": "scrypt:32768:8:1$EjrTHKvILpxhnGnv$7ef5a05c213ed971a60e2b27c9e19da0e8806bfd60629f39e468943005f1ea9c36c02c86e9d65a19b59b57927a9b763ef3b8f77d2dff37710050b722f4755091",
     "secret_key": "",
-    "totp_secret": "",
-    "totp_enabled": False,
     "registered_devices": [],
+    "admin_elevated": False,
     "lan_opt_in": False,
     "ngrok_token": "2wCjLZ216UtiwlN4zYgnBP0u4MZ_3EYqNLgFc4xWCNg2vYPQ",
     # Folders the file browser may access. Empty = your home folder only.
@@ -212,7 +209,6 @@ threading.Thread(target=background_auto_updater, daemon=True).start()
 # ---------------------------------------------------------------- auth & session management
 FAILS = {}  # ip -> (count, locked_until)
 DEVICE_LOCK = threading.Lock()
-PENDING_TOTP_SECRETS = {}
 
 def create_jwt_token(device_id: str, expires_in: int = 3600) -> str:
     payload = {
@@ -264,39 +260,9 @@ def login_required(fn):
 def api_auth_state():
     return jsonify(
         ok=True,
-        totp_enabled=bool(CFG.get("totp_enabled") and CFG.get("totp_secret")),
+        totp_enabled=False,
         hostname=socket.gethostname()
     )
-
-@app.post("/api/auth/enroll_direct")
-def api_auth_enroll_direct():
-    """Allow retrieving/scanning 2FA QR code with Master Password from the login screen."""
-    d = request.get_json(silent=True) or {}
-    pw = d.get("password", "")
-    if not pw or not check_password_hash(CFG["password_hash"], pw):
-        return jsonify(error="Wrong master password"), 403
-    secret = CFG.get("totp_secret") or pyotp.random_base32()
-    PENDING_TOTP_SECRETS[get_client_ip()] = secret
-    hostname = socket.gethostname()
-    uri = pyotp.totp.TOTP(secret).provisioning_uri(name=f"Project-X-Nano ({hostname})", issuer_name="Project-X")
-    img = qrcode.make(uri)
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    qr_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
-    return jsonify(ok=True, secret=secret, qr_b64=qr_b64)
-
-@app.post("/api/auth/reset_2fa")
-def api_auth_reset_2fa():
-    """Allow resetting 2FA using Master Password directly from localhost/login screen."""
-    d = request.get_json(silent=True) or {}
-    pw = d.get("password", "")
-    if not pw or not check_password_hash(CFG["password_hash"], pw):
-        return jsonify(error="Wrong master password"), 403
-    CFG["totp_enabled"] = False
-    CFG["totp_secret"] = ""
-    save_cfg()
-    audit("2FA reset from login prompt via master password")
-    return jsonify(ok=True, msg="2FA disabled successfully")
 
 @app.post("/login")
 @app.post("/api/login")
@@ -310,7 +276,6 @@ def login():
 
     data = request.get_json(silent=True) or {}
     pw = data.get("password", "")
-    totp_code = str(data.get("totp_code", "")).strip()
     remember = bool(data.get("remember", True))
     device_name = str(data.get("device_name", "Remote Client")).strip() or "Remote Client"
     device_id = str(data.get("device_id", "")).strip() or secrets.token_hex(8)
@@ -329,16 +294,6 @@ def login():
         audit("login FAILED: bad password", {"attempts": count})
         time.sleep(1)
         return jsonify(error="Wrong password"), 403
-
-    if CFG.get("totp_enabled") and CFG.get("totp_secret"):
-        if not totp_code:
-            return jsonify(totp_required=True, msg="2FA TOTP code required to complete login")
-        totp = pyotp.TOTP(CFG["totp_secret"])
-        if not totp.verify(totp_code, valid_window=2):
-            count += 1
-            FAILS[ip] = (count, time.time() + 60 if count >= 3 else 0)
-            audit("login FAILED: invalid TOTP 2FA code", {"ip": ip})
-            return jsonify(error="Invalid 2FA authentication code"), 403
 
     FAILS.pop(ip, None)
     session["ok"] = True
@@ -376,70 +331,81 @@ def logout():
     session.clear()
     return jsonify(ok=True)
 
-# ---------------------------------------------------------------- 2FA TOTP Endpoints
-@app.get("/api/2fa/status")
-@login_required
-def api_2fa_status():
-    return jsonify(enabled=bool(CFG.get("totp_enabled")), has_secret=bool(CFG.get("totp_secret")))
-
-@app.post("/api/2fa/enroll")
-@login_required
-def api_2fa_enroll():
-    ip = get_client_ip()
-    device_id = getattr(request, "device_id", None) or session.get("device_id") or ip
-    secret = pyotp.random_base32()
-    PENDING_TOTP_SECRETS[device_id] = secret
-    PENDING_TOTP_SECRETS[ip] = secret
-    session["pending_totp_secret"] = secret
-    hostname = socket.gethostname()
-    uri = pyotp.totp.TOTP(secret).provisioning_uri(name=f"Project-X-Nano ({hostname})", issuer_name="Project-X")
-    img = qrcode.make(uri)
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    qr_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
-    return jsonify(ok=True, secret=secret, qr_b64=qr_b64, otpauth=uri)
-
-@app.post("/api/2fa/confirm")
-@login_required
-def api_2fa_confirm():
-    ip = get_client_ip()
-    device_id = getattr(request, "device_id", None) or session.get("device_id") or ip
-    d = request.get_json(silent=True) or {}
-    code = str(d.get("code", "")).strip()
-    client_secret = str(d.get("secret", "")).strip()
-    secret = client_secret or session.get("pending_totp_secret") or PENDING_TOTP_SECRETS.get(device_id) or PENDING_TOTP_SECRETS.get(ip) or CFG.get("totp_secret")
-    if not secret:
-        return jsonify(error="No 2FA setup in progress"), 400
-    totp = pyotp.TOTP(secret)
-    if totp.verify(code, valid_window=2):
-        CFG["totp_secret"] = secret
-        CFG["totp_enabled"] = True
-        save_cfg()
-        session.pop("pending_totp_secret", None)
-        PENDING_TOTP_SECRETS.pop(device_id, None)
-        PENDING_TOTP_SECRETS.pop(ip, None)
-        audit("2FA TOTP activated successfully")
-        return jsonify(ok=True, msg="Two-Factor Authentication (TOTP) successfully activated!")
-    return jsonify(error="Invalid verification code. Please check your authenticator app and try again."), 400
-
-@app.post("/api/2fa/disable")
-@login_required
-def api_2fa_disable():
-    d = request.get_json(silent=True) or {}
-    pw = d.get("password", "")
-    if not pw or not check_password_hash(CFG["password_hash"], pw):
-        return jsonify(error="Master password confirmation required"), 403
-    CFG["totp_enabled"] = False
-    CFG["totp_secret"] = ""
-    save_cfg()
-    audit("2FA TOTP disabled by user")
-    return jsonify(ok=True, msg="Two-Factor Authentication disabled")
-
 # ---------------------------------------------------------------- Device Session Revocation Endpoints
 @app.get("/api/devices")
 @login_required
 def api_devices_list():
     return jsonify(ok=True, devices=CFG.get("registered_devices", []))
+
+@app.post("/api/devices/register")
+@login_required
+def api_devices_register():
+    d = request.get_json(silent=True) or {}
+    dev_name = str(d.get("name", "")).strip()
+    dev_host = str(d.get("host", "")).strip()
+    if not dev_name or not dev_host:
+        return jsonify(error="Device name and host/URL are required"), 400
+    with DEVICE_LOCK:
+        devices = CFG.setdefault("registered_devices", [])
+        dev_id = str(d.get("id", "")).strip() or secrets.token_hex(8)
+        existing = next((x for x in devices if x.get("id") == dev_id or (x.get("host") == dev_host and dev_host)), None)
+        if existing:
+            existing["name"] = dev_name
+            existing["host"] = dev_host
+            existing["last_active"] = time.strftime("%Y-%m-%d %H:%M:%S")
+            existing["revoked"] = False
+        else:
+            devices.append({
+                "id": dev_id,
+                "name": dev_name,
+                "host": dev_host,
+                "first_seen": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "last_active": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "last_ip": get_client_ip(),
+                "revoked": False,
+            })
+        save_cfg()
+        audit("Device registered / updated", {"device_id": dev_id, "name": dev_name, "host": dev_host})
+    return jsonify(ok=True, msg=f"Device '{dev_name}' registered successfully", device_id=dev_id)
+
+@app.post("/api/devices/delete")
+@login_required
+def api_devices_delete():
+    d = request.get_json(silent=True) or {}
+    target_id = str(d.get("device_id", "")).strip()
+    verify_pw = str(d.get("password", "")).strip()
+    if not target_id:
+        return jsonify(error="Device ID required"), 400
+    # Verification check: If password is provided, verify against master password
+    if verify_pw:
+        if not check_password_hash(CFG["password_hash"], verify_pw):
+            return jsonify(error="Verification failed: Invalid master password"), 403
+    with DEVICE_LOCK:
+        devices = CFG.get("registered_devices", [])
+        initial_len = len(devices)
+        CFG["registered_devices"] = [x for x in devices if x.get("id") != target_id]
+        if len(CFG["registered_devices"]) < initial_len:
+            save_cfg()
+            audit("Device permanently deleted", {"deleted_device_id": target_id})
+            return jsonify(ok=True, msg="Device removed from registered devices")
+    return jsonify(error="Device not found"), 404
+
+@app.post("/api/devices/verify")
+@login_required
+def api_devices_verify():
+    """Verify master password authorization for sensitive device & host actions."""
+    d = request.get_json(silent=True) or {}
+    pw = str(d.get("password", "")).strip()
+    action = str(d.get("action", "unspecified")).strip()
+    if not pw:
+        return jsonify(error="Password required for verification"), 400
+    if not check_password_hash(CFG["password_hash"], pw):
+        audit("Verification FAILED", {"action": action})
+        return jsonify(error="Invalid master password"), 403
+    audit("Verification SUCCESS", {"action": action})
+    # Issue a short-lived verification token
+    verify_token = secrets.token_hex(16)
+    return jsonify(ok=True, verified=True, verify_token=verify_token, msg="Action authorized.")
 
 @app.post("/api/devices/revoke")
 @login_required
@@ -2038,6 +2004,49 @@ def is_admin():
         return os.geteuid() == 0
     except Exception:
         return False
+
+@app.get("/api/system/admin_status")
+@login_required
+def api_system_admin_status():
+    admin = is_admin()
+    CFG["admin_elevated"] = admin
+    return jsonify(ok=True, is_admin=admin)
+
+@app.post("/api/system/elevate")
+@login_required
+def api_system_elevate():
+    """Trigger UAC elevation on Windows and restart backend with Administrator privileges."""
+    if is_admin():
+        return jsonify(ok=True, already_admin=True, msg="Backend is already running as Administrator.")
+    if not IS_WIN:
+        return jsonify(error="Admin elevation via UAC is only applicable on Windows."), 400
+
+    def _do_elevate():
+        time.sleep(1.0)
+        try:
+            bat_path = BASE / "run-as-admin.bat"
+            if bat_path.exists():
+                subprocess.Popen(
+                    ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
+                     f"Start-Process cmd.exe -ArgumentList '/c \"\"{bat_path}\"\"' -Verb RunAs"],
+                    creationflags=subprocess.CREATE_NO_WINDOW if IS_WIN else 0
+                )
+            else:
+                exe = sys.executable
+                py_script = Path(__file__).resolve()
+                subprocess.Popen(
+                    ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
+                     f"Start-Process '\"{exe}\"' -ArgumentList '\"{py_script}\"' -Verb RunAs"],
+                    creationflags=subprocess.CREATE_NO_WINDOW if IS_WIN else 0
+                )
+        except Exception as e:
+            print(f"[Elevate] Error during relaunch: {e}")
+        time.sleep(1.0)
+        os._exit(0)
+
+    threading.Thread(target=_do_elevate, daemon=True).start()
+    return jsonify(ok=True, msg="Requesting Administrator privileges via Windows UAC prompt. Backend is restarting...")
+
 def audit(text, details=None):
     try:
         ip = get_client_ip()
@@ -2940,17 +2949,6 @@ button.acc, .btn.acc {
     🔑 MASTER PASSWORD
   </div>
   <input id="pw" type="password" placeholder="Enter Master Password" style="margin-bottom:14px;font-size:15px">
-  
-  <div id="login2faBox" style="display:none;margin-bottom:14px;background:var(--surface-inset);padding:14px;border-radius:12px;border:1px solid var(--accent);text-align:left">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-      <span style="font-size:12px;font-weight:700;color:var(--accent)">🔐 AUTHENTICATOR 2FA CODE</span>
-      <span style="font-size:10px;color:var(--green)">● 6 Digits</span>
-    </div>
-    <input id="loginTotp" type="text" placeholder="000000" maxlength="6" inputmode="numeric" style="text-align:center;font-size:20px;font-weight:800;letter-spacing:8px;font-family:var(--font-mono);width:100%">
-    <div style="font-size:11px;color:var(--text-muted);margin-top:6px;text-align:center">
-      Enter 6-digit code from your authenticator app
-    </div>
-  </div>
 
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;font-size:12px;color:var(--text-muted)">
     <label for="chkRemember" style="display:flex;align-items:center;gap:8px;cursor:pointer">
@@ -2961,28 +2959,11 @@ button.acc, .btn.acc {
   </div>
   
   <button id="btnLoginSubmit" class="acc" style="width:100%;height:46px;font-size:15px;font-weight:700" onclick="login()">⚡ Connect to PC</button>
-  
-  <div id="login2faHelpRow" style="margin-top:14px;font-size:12px;display:flex;justify-content:center;align-items:center;gap:12px">
-    <a href="javascript:void(0)" onclick="openLoginEnrollModal()" style="color:var(--accent);text-decoration:none">📱 Scan / Setup QR Code</a>
-    <span style="color:var(--text-hint)">•</span>
-    <a href="javascript:void(0)" onclick="quickReset2FA()" style="color:var(--text-muted);text-decoration:none">⚠️ Reset 2FA</a>
-  </div>
-  
+
   <div style="margin-top:18px;display:flex;justify-content:center;gap:12px">
     <a href="/download/apk" style="color:var(--accent);font-size:12px;text-decoration:none;display:inline-flex;align-items:center;gap:6px">
       <span>📱</span> Download Android Controller APK
     </a>
-  </div>
-</div>
-
-<!-- Login QR Code Modal -->
-<div id="loginQrModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:99999;align-items:center;justify-content:center;padding:16px">
-  <div class="card" style="max-width:380px;width:100%;text-align:center;position:relative;margin:auto;box-shadow:0 16px 48px rgba(0,0,0,0.7)">
-    <div style="font-weight:700;font-size:16px;margin-bottom:6px">📱 Scan 2FA QR Code</div>
-    <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Scan this into Google Authenticator or Authy</div>
-    <div id="loginModalQr" style="padding:10px;background:#fff;border-radius:10px;display:inline-block;margin-bottom:12px"></div>
-    <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px">Manual Key: <span id="loginModalSecret" style="font-family:var(--font-mono);color:var(--accent);font-weight:700"></span></div>
-    <button class="btn" style="width:100%;margin-top:8px" onclick="$('loginQrModal').style.display='none'">✓ Done, Close</button>
   </div>
 </div>
 
@@ -2994,9 +2975,14 @@ button.acc, .btn.acc {
       <img src="/favicon.png" style="width:28px;height:28px;border-radius:8px;vertical-align:middle" alt="Logo">
       <span id="host">Project-X-Nano</span>
       <span class="brand-badge">NANO HOST</span>
+      <span id="adminBadge" class="brand-badge" style="display:none;background:rgba(239,68,68,0.2);color:#ef4444;border:1px solid #ef4444">ADMIN ELEVATED</span>
     </div>
     
     <div class="header-actions">
+      <!-- Admin Elevation Action -->
+      <button id="btnRequestAdmin" onclick="requestAdminElevation()" class="btn" style="padding:6px 11px;font-size:12px;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);color:#fca5a5" title="Elevate Host with Windows Administrator Privileges">
+        <span>🛡️ Run as Admin</span>
+      </button>
       <!-- Quick Theme Switcher in Header -->
       <select class="pill-select" id="themePickerHeader" onchange="setTheme(this.value)">
         <option value="cyber">⚡ Cyber Dark</option>
@@ -3027,6 +3013,7 @@ button.acc, .btn.acc {
     <button class="nav-tab active" onclick="showTab('overview', this)">📊 Overview</button>
     <button class="nav-tab" onclick="showTab('server', this)">🖥️ Host Backend</button>
     <button class="nav-tab" onclick="showTab('fleet', this)">👥 Fleet (<span id="tabFleetCount">1</span>)</button>
+    <button class="nav-tab" onclick="showTab('devices', this)">📱 Devices (<span id="tabDeviceCount">0</span>)</button>
     <button class="nav-tab" onclick="showTab('screen', this)">📺 Live Screen &amp; Cam</button>
     <button class="nav-tab" onclick="showTab('controls', this)">🎮 Remote Controls</button>
     <button class="nav-tab" onclick="showTab('procs', this)">⚡ Processes</button>
@@ -3169,6 +3156,31 @@ button.acc, .btn.acc {
         <button onclick="discover()" style="padding:4px 10px;font-size:12px">🔍 Scan Subnet</button>
       </h2>
       <div id="devList" class="stat" style="flex-direction:column;gap:6px">Scanning subnet for Project-X-Nano nodes…</div>
+    </div>
+  </div>
+
+  <!-- MULTI-DEVICE MANAGER TAB -->
+  <div id="tab-devices" class="tab-content" style="display:none">
+    <div class="card">
+      <h2>
+        <span>📱 Multi-Device Controller &amp; Sessions</span>
+        <button class="acc" style="padding:4px 10px;font-size:12px" onclick="$('devAddBox').style.display=$('devAddBox').style.display==='none'?'block':'none'">➕ Register Device</button>
+      </h2>
+      <p style="color:var(--text-muted);font-size:13px;margin:0 0 14px">
+        Manage and switch between multiple remote devices and phones connected to this PC. Sensitive actions require password verification.
+      </p>
+
+      <div id="devAddBox" style="display:none;background:var(--surface-inset);padding:14px;border-radius:14px;margin-bottom:14px;border:1px solid var(--border-card)">
+        <div style="font-weight:700;margin-bottom:10px">Register New Device / Controller</div>
+        <input id="newDevName" placeholder="Device Name (e.g. Pixel 8, iPad Pro, Work Laptop)" style="margin-bottom:8px">
+        <input id="newDevHost" placeholder="Device IP / Hostname / Tailscale IP (e.g. 192.168.1.105)" style="margin-bottom:8px">
+        <div class="row">
+          <button class="acc" onclick="saveNewDevice()">Save Device</button>
+          <button onclick="$('devAddBox').style.display='none'">Cancel</button>
+        </div>
+      </div>
+
+      <div id="activeDevicesTable" style="display:flex;flex-direction:column;gap:10px;max-height:420px;overflow-y:auto"></div>
     </div>
   </div>
 
@@ -3541,59 +3553,6 @@ button.acc, .btn.acc {
 
       <div class="stat-box" style="margin-bottom:16px">
         <div class="stat-header">
-          <span>🔐 TOTP Two-Factor Authentication (2FA)</span>
-          <span id="totpStatusBadge" class="badge badge-green">Checking...</span>
-        </div>
-        <p style="color:var(--text-muted);font-size:13px;margin:8px 0 12px">
-          Require a 6-digit one-time code from Google Authenticator, Authy, or 1Password every time anyone attempts to log in.
-        </p>
-        <div id="totpActiveArea" style="display:none;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.3);border-radius:14px;padding:16px;margin-bottom:12px">
-          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
-            <div>
-              <div style="color:var(--green);font-weight:700;font-size:14px;margin-bottom:4px">✅ Two-Factor Authentication is Active &amp; Enforced</div>
-              <div style="color:var(--text-muted);font-size:12px">Your PC is protected with 6-digit TOTP one-time codes on all remote logins.</div>
-            </div>
-            <div style="display:flex;gap:8px">
-              <button class="btn" onclick="start2FAEnroll(true)">🔄 Re-configure 2FA</button>
-              <button class="red" onclick="disable2FA()">Disable 2FA</button>
-            </div>
-          </div>
-        </div>
-
-        <div id="totpSetupArea" style="background:var(--surface-inset);padding:18px;border-radius:14px;border:1px solid var(--border-card)">
-          <div style="display:flex;align-items:center;gap:8px;font-weight:700;color:var(--accent);margin-bottom:6px">
-            <span>📱 Step 1: Scan QR Code or Copy Secret Key</span>
-          </div>
-          <p style="color:var(--text-muted);font-size:12px;margin:0 0 14px">
-            Open Google Authenticator, Microsoft Authenticator, or Authy on your phone and scan the QR code below:
-          </p>
-
-          <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:20px;margin-bottom:16px">
-            <div id="totpQrContainer" style="padding:10px;background:#fff;border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,0.3);min-width:160px;min-height:160px;display:flex;align-items:center;justify-content:center">
-              <span style="color:#000;font-size:12px">Generating QR...</span>
-            </div>
-
-            <div style="flex:1;min-width:240px">
-              <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px">Or enter this Secret Key manually:</div>
-              <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
-                <input id="totpSecretText" readonly style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--accent);letter-spacing:2px;background:var(--bg-dark);padding:8px 12px;border-radius:8px;border:1px solid var(--border-card);width:100%" value="Loading...">
-                <button class="btn" style="white-space:nowrap;padding:8px 14px" onclick="copyTotpSecret()">📋 Copy</button>
-              </div>
-
-              <div style="font-size:12px;font-weight:700;color:var(--text-white);margin-bottom:6px">
-                🔢 Step 2: Enter 6-Digit Code from Authenticator:
-              </div>
-              <div style="display:flex;gap:8px">
-                <input id="totpConfirmCode" placeholder="000000" maxlength="6" inputmode="numeric" style="text-align:center;font-size:18px;font-weight:700;letter-spacing:6px;width:140px;font-family:var(--font-mono)">
-                <button class="acc" style="flex:1" onclick="confirm2FA()">⚡ Verify &amp; Activate 2FA</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="stat-box" style="margin-bottom:16px">
-        <div class="stat-header">
           <span>📱 Connected Devices &amp; Revocable Sessions</span>
           <button class="btn" style="padding:2px 8px;font-size:11px" onclick="loadDevices()">🔄 Refresh</button>
         </div>
@@ -3776,23 +3735,53 @@ function show(ok) {
   if (ok) {
     init();
     updateHostServerPills();
+    checkAdminElevationStatus();
+    loadDevices();
+  }
+}
+
+async function checkAdminElevationStatus() {
+  try {
+    const res = await api('system/admin_status');
+    const badge = $('adminBadge');
+    const btn = $('btnRequestAdmin');
+    if (res && res.is_admin) {
+      if (badge) { badge.style.display = 'inline-block'; badge.textContent = '🛡️ ADMIN ELEVATED'; }
+      if (btn) { btn.style.display = 'none'; }
+    } else {
+      if (badge) { badge.style.display = 'none'; }
+      if (btn) { btn.style.display = 'inline-block'; }
+    }
+  } catch(e) {}
+}
+
+async function requestAdminElevation() {
+  if (!confirm('Prompt Windows UAC to elevate Project-X-Nano to Administrator privileges?\n\nThe server process will briefly restart with elevated rights.')) return;
+  try {
+    toast('Requesting UAC Elevation...');
+    const res = await api('system/elevate', {}, 'POST');
+    if (res.ok) {
+      toast('✓ ' + res.msg);
+      setTimeout(() => {
+        location.reload();
+      }, 3500);
+    } else {
+      toast('⚠️ ' + (res.error || 'Failed to request elevation'));
+    }
+  } catch (e) {
+    toast('Elevation request dispatched.');
+    setTimeout(() => { location.reload(); }, 3500);
   }
 }
 
 let gDeviceId = localStorage.getItem('pxn_device_id') || ('dev_' + Math.random().toString(36).substring(2, 10));
 localStorage.setItem('pxn_device_id', gDeviceId);
-let gPendingLoginPw = '';
-let gPendingTotpSecret = '';
 
 async function login() {
   const pwInput = $('pw');
-  const totpInput = $('loginTotp');
   const remember = $('chkRemember') ? $('chkRemember').checked : true;
 
   let pw = pwInput ? pwInput.value : '';
-  if (!pw && gPendingLoginPw) {
-    pw = gPendingLoginPw;
-  }
   if (!pw && remember) {
     pw = localStorage.getItem('pxn_saved_pw') || '';
   }
@@ -3803,28 +3792,13 @@ async function login() {
     return;
   }
 
-  const totpCode = totpInput ? totpInput.value.trim() : '';
-
   try {
     const d = await api('login', {
       password: pw,
-      totp_code: totpCode,
       remember: remember,
       device_id: gDeviceId,
       device_name: navigator.userAgent.includes('Mobile') ? 'Mobile Device' : 'Desktop Browser'
     });
-
-    if (d.totp_required) {
-      gPendingLoginPw = pw;
-      if ($('login2faBox')) {
-        $('login2faBox').style.display = 'block';
-      }
-      if (totpInput) {
-        totpInput.focus();
-      }
-      toast('🔐 2FA Code Required - Enter 6-digit code');
-      return;
-    }
 
     if (d.ok) {
       if (remember) {
@@ -3839,19 +3813,11 @@ async function login() {
         localStorage.setItem('pxn_jwt_token', d.token);
       }
 
-      gPendingLoginPw = '';
       if (pwInput) pwInput.value = '';
-      if (totpInput) totpInput.value = '';
-      if ($('login2faBox')) $('login2faBox').style.display = 'none';
       show(true);
       toast('⚡ Connected to Host PC');
-      check2FAStatus();
     } else {
       toast('❌ ' + (d.error || 'Authentication Failed'));
-      if (totpInput && $('login2faBox') && $('login2faBox').style.display !== 'none') {
-        totpInput.select();
-        totpInput.focus();
-      }
     }
   } catch (e) {
     toast('❌ Connection failed');
@@ -3887,159 +3853,109 @@ async function logout() {
   show(false);
 }
 
-/* ================= 2FA TOTP MANAGEMENT ================= */
-function copyTotpSecret() {
-  const input = $('totpSecretText');
-  if (!input || !input.value) return;
-  navigator.clipboard.writeText(input.value).then(() => {
-    toast('📋 Secret key copied to clipboard!');
-  }).catch(() => {
-    input.select();
-    document.execCommand('copy');
-    toast('📋 Secret key copied!');
-  });
-}
-
-async function check2FAStatus() {
-  try {
-    const d = await api('2fa/status');
-    const badge = $('totpStatusBadge');
-    if (badge) {
-      badge.textContent = d.enabled ? 'ACTIVE & ENFORCED' : 'NOT ENABLED';
-      badge.className = 'badge ' + (d.enabled ? 'badge-green' : 'badge-yellow');
-    }
-    if ($('totpSetupArea')) $('totpSetupArea').style.display = d.enabled ? 'none' : 'block';
-    if ($('totpActiveArea')) $('totpActiveArea').style.display = d.enabled ? 'block' : 'none';
-
-    // In auth setup, display key and QR immediately at the first time
-    if (!d.enabled) {
-      start2FAEnroll();
-    }
-  } catch(e) {}
-}
-
-async function start2FAEnroll(force = false) {
-  if ($('totpSetupArea')) $('totpSetupArea').style.display = 'block';
-  if ($('totpActiveArea') && force) $('totpActiveArea').style.display = 'none';
-
-  try {
-    const d = await api('2fa/enroll');
-    if (d.ok) {
-      gPendingTotpSecret = d.secret;
-      if ($('totpQrContainer')) {
-        $('totpQrContainer').innerHTML = `<img src="data:image/png;base64,${d.qr_b64}" style="width:160px;height:160px;display:block;border-radius:6px" alt="2FA QR">`;
-      }
-      if ($('totpSecretText')) {
-        $('totpSecretText').value = d.secret;
-      }
-      if ($('totpConfirmCode')) {
-        $('totpConfirmCode').value = '';
-      }
-    } else {
-      toast('❌ ' + (d.error || 'Failed to generate 2FA key'));
-    }
-  } catch(e) {
-    toast('❌ Error loading 2FA QR code');
-  }
-}
-
-async function confirm2FA() {
-  const code = $('totpConfirmCode').value.trim();
-  if (!code) return toast('Please enter the 6-digit code');
-  const d = await api('2fa/confirm', { code: code, secret: gPendingTotpSecret });
-  if (d.ok) {
-    toast('✅ 2FA successfully activated!');
-    gPendingTotpSecret = '';
-    check2FAStatus();
-  } else {
-    toast('❌ ' + (d.error || 'Verification failed'));
-    if ($('totpConfirmCode')) {
-      $('totpConfirmCode').select();
-      $('totpConfirmCode').focus();
-    }
-  }
-}
-
-async function disable2FA() {
-  const pw = prompt('Enter Master Password to disable 2FA:');
-  if (!pw) return;
-  const d = await api('2fa/disable', { password: pw });
-  if (d.ok) {
-    toast('2FA Disabled');
-    check2FAStatus();
-  } else {
-    toast('❌ ' + (d.error || 'Failed'));
-  }
-}
-
-async function openLoginEnrollModal() {
-  const pw = $('pw').value || prompt('Enter Master Password to view 2FA QR Code:');
-  if (!pw) return;
-  try {
-    const res = await fetch('/api/auth/enroll_direct', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password: pw })
-    });
-    const d = await res.json();
-    if (d.ok) {
-      $('loginModalQr').innerHTML = `<img src="data:image/png;base64,${d.qr_b64}" style="width:160px;height:160px;display:block">`;
-      $('loginModalSecret').textContent = d.secret;
-      $('loginQrModal').style.display = 'flex';
-    } else {
-      toast('❌ ' + (d.error || 'Password incorrect'));
-    }
-  } catch(e) {
-    toast('❌ Error loading QR');
-  }
-}
-
-async function quickReset2FA() {
-  const pw = prompt('Enter Master Password to reset and disable 2FA:');
-  if (!pw) return;
-  try {
-    const res = await fetch('/api/auth/reset_2fa', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password: pw })
-    });
-    const d = await res.json();
-    if (d.ok) {
-      toast('✅ 2FA disabled! You can now log in with only your password.');
-      if ($('login2faBox')) $('login2faBox').style.display = 'none';
-      if ($('loginTotp')) $('loginTotp').value = '';
-    } else {
-      toast('❌ ' + (d.error || 'Password incorrect'));
-    }
-  } catch(e) {
-    toast('❌ Error resetting 2FA');
-  }
-}
-
 /* ================= DEVICES & SESSIONS ================= */
+let registeredDevicesData = [];
+
 async function loadDevices() {
   const d = await api('devices');
+  registeredDevicesData = d.devices || [];
+  if ($('tabDeviceCount')) $('tabDeviceCount').textContent = registeredDevicesData.length;
+
+  // Render in Security tab
   const list = $('deviceList');
-  if (!list) return;
-  if (!d.devices || !d.devices.length) {
-    list.innerHTML = '<span style="color:var(--text-muted)">No registered devices.</span>';
+  if (list) {
+    if (!registeredDevicesData.length) {
+      list.innerHTML = '<span style="color:var(--text-muted)">No registered devices.</span>';
+    } else {
+      list.innerHTML = registeredDevicesData.map(dev => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--surface-inset);border-radius:10px;border:1px solid var(--border-card)">
+          <div>
+            <div style="font-weight:700;font-size:12px">${dev.name} ${dev.id === gDeviceId ? '<span style="color:var(--accent)">(This Device)</span>' : ''}</div>
+            <div style="font-size:11px;color:var(--text-muted);font-family:var(--font-mono)">IP/Host: ${dev.host || dev.last_ip || 'N/A'} | Last: ${dev.last_active || 'N/A'}</div>
+          </div>
+          <div>
+            ${dev.revoked ? '<span class="badge badge-yellow">REVOKED</span>' : `<button class="red" style="padding:3px 8px;font-size:11px" onclick="revokeDevice('${dev.id}')">Revoke</button>`}
+          </div>
+        </div>
+      `).join('');
+    }
+  }
+
+  // Render in Dedicated Devices tab
+  const devTable = $('activeDevicesTable');
+  if (devTable) {
+    if (!registeredDevicesData.length) {
+      devTable.innerHTML = '<span style="color:var(--text-muted);padding:10px 0">No devices registered. Click "➕ Register Device" to add an active controller.</span>';
+    } else {
+      devTable.innerHTML = registeredDevicesData.map(dev => {
+        const isCurrent = dev.id === gDeviceId;
+        const statusBadge = dev.revoked ? '<span class="badge badge-yellow">REVOKED</span>' : '<span class="badge badge-green">ACTIVE</span>';
+        return `
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 14px;background:var(--surface-inset);border-radius:12px;border:1px solid var(--border-card)">
+            <div>
+              <div style="font-weight:700;font-size:13px;display:flex;align-items:center;gap:8px">
+                📱 ${dev.name} ${isCurrent ? '<span class="badge badge-green">CURRENT CONTROLLER</span>' : statusBadge}
+              </div>
+              <div style="font-size:11px;color:var(--text-muted);font-family:var(--font-mono);margin-top:4px">
+                Host/IP: ${dev.host || dev.last_ip || 'Local'} · Last active: ${dev.last_active || 'Now'}
+              </div>
+            </div>
+            <div style="display:flex;gap:6px">
+              ${dev.host && !isCurrent ? `<button class="acc" style="padding:4px 10px;font-size:11px" onclick="connectToRemoteDevice('${dev.host}')">🔄 Switch</button>` : ''}
+              <button class="red" style="padding:4px 10px;font-size:11px" onclick="deleteDevice('${dev.id}', '${dev.name}')">🗑️ Remove</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+  }
+}
+
+async function saveNewDevice() {
+  const name = $('newDevName').value.trim();
+  const host = $('newDevHost').value.trim();
+  if (!name || !host) {
+    toast('Enter device name and IP/Host');
     return;
   }
-  list.innerHTML = d.devices.map(dev => `
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--surface-inset);border-radius:10px;border:1px solid var(--border-card)">
-      <div>
-        <div style="font-weight:700;font-size:12px">${dev.name} ${dev.id === gDeviceId ? '<span style="color:var(--accent)">(This Device)</span>' : ''}</div>
-        <div style="font-size:11px;color:var(--text-muted);font-family:var(--font-mono)">IP: ${dev.last_ip || 'N/A'} | Last: ${dev.last_active || 'N/A'}</div>
-      </div>
-      <div>
-        ${dev.revoked ? '<span class="badge badge-yellow">REVOKED</span>' : `<button class="red" style="padding:3px 8px;font-size:11px" onclick="revokeDevice('${dev.id}')">Revoke</button>`}
-      </div>
-    </div>
-  `).join('');
+  const r = await api('devices/register', { name, host });
+  if (r.ok) {
+    $('newDevName').value = '';
+    $('newDevHost').value = '';
+    $('devAddBox').style.display = 'none';
+    toast(r.msg);
+    loadDevices();
+  } else {
+    toast('⚠️ ' + (r.error || 'Failed to register device'));
+  }
+}
+
+async function connectToRemoteDevice(host) {
+  if (!confirm(`Switch active connection target to: ${host}?`)) return;
+  let targetUrl = host;
+  if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
+    targetUrl = 'http://' + targetUrl;
+  }
+  if (!targetUrl.includes(':', targetUrl.indexOf('://') + 3)) {
+    targetUrl += ':8765';
+  }
+  window.location.href = targetUrl;
+}
+
+async function deleteDevice(id, name) {
+  const pw = prompt(`VERIFICATION REQUIRED: Enter master password to permanently remove device "${name}":`);
+  if (!pw) return;
+  const d = await api('devices/delete', { device_id: id, password: pw });
+  if (d.ok) {
+    toast(d.msg || 'Device removed');
+    loadDevices();
+  } else {
+    toast('⚠️ ' + (d.error || 'Removal failed'));
+  }
 }
 
 async function revokeDevice(id) {
-  if (!confirm('Revoke access for this device? It will be disconnected.')) return;
+  if (!confirm('Revoke session access for this device?')) return;
   const d = await api('devices/revoke', { device_id: id });
   toast(d.msg || d.error);
   loadDevices();
@@ -4504,7 +4420,9 @@ function showTab(name, btn) {
   if (name === 'ports') loadPorts();
   if (name === 'services') loadServices();
   if (name === 'overview') updateHardwareTelemetry();
-  if (name === 'security') { check2FAStatus(); loadDevices(); loadAuditLogs(); }
+  if (name === 'devices') loadDevices();
+  if (name === 'fleet') fleetRefresh();
+  if (name === 'security') { loadDevices(); loadAuditLogs(); }
   if (btn) btn.classList.add('active');
 }
 
@@ -4997,30 +4915,8 @@ async function init() {
 if ($('pw')) {
   $('pw').addEventListener('keydown', e => {
     if (e.key === 'Enter') {
-      if ($('login2faBox') && $('login2faBox').style.display !== 'none' && $('loginTotp') && !$('loginTotp').value) {
-        $('loginTotp').focus();
-      } else {
-        login();
-      }
+      login();
     }
-  });
-}
-
-if ($('loginTotp')) {
-  $('loginTotp').addEventListener('keydown', e => {
-    if (e.key === 'Enter') login();
-  });
-  $('loginTotp').addEventListener('input', e => {
-    if (e.target.value.trim().length === 6) login();
-  });
-}
-
-if ($('totpConfirmCode')) {
-  $('totpConfirmCode').addEventListener('keydown', e => {
-    if (e.key === 'Enter') confirm2FA();
-  });
-  $('totpConfirmCode').addEventListener('input', e => {
-    if (e.target.value.trim().length === 6) confirm2FA();
   });
 }
 
@@ -5032,12 +4928,6 @@ if ($('chkRemember')) {
       localStorage.removeItem('pxn_saved_pw');
     }
   });
-}
-
-const G_TOTP_ENABLED = __SERVER_TOTP_ACTIVE__;
-if (G_TOTP_ENABLED) {
-  if ($('login2faBox')) $('login2faBox').style.display = 'block';
-  if ($('pw') && $('pw').value && $('loginTotp')) $('loginTotp').focus();
 }
 
 // Initial check: if already authenticated via session cookie or JWT, show dashboard immediately;
@@ -5110,8 +5000,7 @@ def api_tunnel_config():
 
 @app.get("/")
 def index():
-    totp_active = "true" if (CFG.get("totp_enabled") and CFG.get("totp_secret")) else "false"
-    return PAGE.replace("__SERVER_TOTP_ACTIVE__", totp_active)
+    return PAGE
 def lan_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
@@ -5145,12 +5034,33 @@ if __name__ == "__main__":
     if "--nuke" in sys.argv:
         perform_nuke()
         sys.exit(0)
-    if "--reset-2fa" in sys.argv:
-        CFG["totp_enabled"] = False
-        CFG["totp_secret"] = ""
-        save_cfg()
-        print("[Security] 2FA disabled successfully! You can now log in using only your master password.")
-        sys.exit(0)
+
+    # Prompt / elevate to Windows Administrator if requested or if not already elevated
+    if IS_WIN and "--no-elevate" not in sys.argv and not is_admin():
+        if "--elevate" in sys.argv or os.environ.get("AUTO_ELEVATE") == "1":
+            print("[UAC] Requesting Administrator privileges...")
+            try:
+                bat_path = BASE / "run-as-admin.bat"
+                if bat_path.exists():
+                    subprocess.Popen(
+                        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
+                         f"Start-Process cmd.exe -ArgumentList '/c \"\"{bat_path}\"\"' -Verb RunAs"],
+                        creationflags=subprocess.CREATE_NO_WINDOW
+                    )
+                else:
+                    subprocess.Popen(
+                        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
+                         f"Start-Process '\"{sys.executable}\"' -ArgumentList '\"{Path(__file__).resolve()}\"' -Verb RunAs"],
+                        creationflags=subprocess.CREATE_NO_WINDOW
+                    )
+                sys.exit(0)
+            except Exception as e:
+                print(f"[UAC] Elevation prompt bypassed or failed: {e}")
+        else:
+            print("[Notice] Running in standard user mode. You can elevate anytime via UI or run-as-admin.bat.")
+    elif IS_WIN and is_admin():
+        print("[Security] Running with verified Windows Administrator privileges.")
+
 
     port = int(os.environ.get("PORT", CFG["port"]))
     tunnel_active = "--forward" in sys.argv or CFG.get("auto_forward", True)

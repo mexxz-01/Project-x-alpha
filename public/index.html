@@ -706,18 +706,43 @@ button.acc, .btn.acc {
 </style></head><body>
 
 <!-- 24/7 Cloud Fleet Device Selector Bar -->
-<div id="cloudFleetBar" style="background:rgba(15,23,42,0.95);border-bottom:1px solid rgba(59,130,246,0.25);padding:10px 16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;font-family:var(--font-sans);font-size:13px;position:sticky;top:0;z-index:999;backdrop-filter:blur(10px);">
-  <div style="display:flex;align-items:center;gap:12px;">
-    <span style="font-weight:800;color:#38bdf8;display:flex;align-items:center;gap:6px;">⚡ <span>Project-X-Nano</span></span>
-    <span style="background:rgba(0,230,153,0.15);color:#00e699;border:1px solid #00e699;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;">24/7 NEON CLOUD HUB</span>
+<div id="cloudFleetBar" style="background:linear-gradient(180deg, rgba(11,17,32,0.98), rgba(7,10,19,0.95));border-bottom:1px solid rgba(59,130,246,0.22);padding:10px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;font-family:var(--font-sans);font-size:13px;position:sticky;top:0;z-index:9999;backdrop-filter:blur(16px);box-shadow:0 4px 20px rgba(0,0,0,0.45);">
+  <div style="display:flex;align-items:center;gap:14px;">
+    <div style="font-weight:800;color:#f8fafc;display:flex;align-items:center;gap:8px;font-size:15px;letter-spacing:-0.02em;">
+      <span style="color:#38bdf8;text-shadow:0 0 10px rgba(56,189,248,0.5);">⚡</span> Project-X-Nano
+    </div>
+    <span style="background:rgba(0,230,153,0.12);color:#00e699;border:1px solid rgba(0,230,153,0.3);padding:3px 10px;border-radius:999px;font-size:10px;font-weight:700;letter-spacing:0.04em;">NEON REALTIME</span>
+    
+    <!-- Backend Server Connection Status Indicator -->
+    <div id="backendServerStatusPill" style="display:inline-flex;align-items:center;gap:6px;background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.3);color:#34d399;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:600;font-family:var(--font-mono);transition:all 0.3s ease;">
+      <span id="backendStatusDot" style="width:7px;height:7px;border-radius:50%;background:#10b981;box-shadow:0 0 8px #10b981;display:inline-block;animation:pulseDot 2s infinite;"></span>
+      <span id="backendStatusText">Backend: Connected (24/7 Edge)</span>
+    </div>
   </div>
-  <div style="display:flex;align-items:center;gap:10px;">
-    <span style="color:var(--text-muted);font-size:12px;">Active Target PC:</span>
-    <select id="cloudTargetPcSelect" onchange="switchCloudTargetPc(this.value)" style="background:#0b1120;color:#f8fafc;border:1px solid var(--border-card);border-radius:8px;padding:6px 12px;font-size:12px;font-weight:600;min-width:180px;">
-      <option value="">Scanning Fleet...</option>
-    </select>
-    <button class="btn" style="padding:5px 10px;font-size:11px;" onclick="fetchCloudDevices(true)">🔄 Refresh</button>
+
+  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+    <!-- Active Target PC Fleet Dropdown -->
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span style="color:var(--text-muted);font-size:12px;font-weight:500;">Target PC:</span>
+      <select id="cloudTargetPcSelect" onchange="switchCloudTargetPc(this.value)" style="background:#0f172a;color:#f8fafc;border:1px solid rgba(59,130,246,0.3);border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600;outline:none;cursor:pointer;transition:border-color 0.2s ease;">
+        <option value="">Scanning Fleet...</option>
+      </select>
+    </div>
+
+    <!-- Quick Action Buttons -->
+    <button class="btn" style="padding:6px 12px;font-size:11px;background:#1e293b;border-color:rgba(255,255,255,0.1);" onclick="checkBackendHealth(true)" title="Ping Cloud Backend Server">⚡ Test Server</button>
+    <button class="btn" style="padding:6px 12px;font-size:11px;background:#1e293b;border-color:rgba(255,255,255,0.1);" onclick="fetchCloudDevices(true)" title="Rescan Cloud Fleet">🔄 Refresh Fleet</button>
   </div>
+</div>
+
+<style>
+@keyframes pulseDot {
+  0% { transform: scale(0.95); opacity: 0.7; }
+  50% { transform: scale(1.15); opacity: 1; }
+  100% { transform: scale(0.95); opacity: 0.7; }
+}
+</style>
+
 </div>
 
 
@@ -2791,4 +2816,47 @@ fetch('/api/stats').then(r => {
   show(false);
   attemptAutoConnect(); fetchCloudDevices(); setInterval(fetchCloudDevices, 15000);
 });
+
+async function checkBackendHealth(manual = false) {
+  const pill = document.getElementById('backendServerStatusPill');
+  const dot = document.getElementById('backendStatusDot');
+  const txt = document.getElementById('backendStatusText');
+  
+  try {
+    const start = Date.now();
+    const res = await fetch('/api/status', { cache: 'no-store' });
+    const latency = Date.now() - start;
+    if (res.ok) {
+      const data = await res.json();
+      if (pill) {
+        pill.style.background = 'rgba(16,185,129,0.12)';
+        pill.style.borderColor = 'rgba(16,185,129,0.3)';
+        pill.style.color = '#34d399';
+      }
+      if (dot) {
+        dot.style.background = '#10b981';
+        dot.style.boxShadow = '0 0 8px #10b981';
+      }
+      if (txt) txt.textContent = `Backend: Connected (${latency}ms)`;
+      if (manual) toast(`⚡ Cloud Backend Connected: ${latency}ms latency | 24/7 Neon Engine`);
+    } else {
+      throw new Error('HTTP ' + res.status);
+    }
+  } catch (err) {
+    if (pill) {
+      pill.style.background = 'rgba(239,68,68,0.12)';
+      pill.style.borderColor = 'rgba(239,68,68,0.3)';
+      pill.style.color = '#f87171';
+    }
+    if (dot) {
+      dot.style.background = '#ef4444';
+      dot.style.boxShadow = '0 0 8px #ef4444';
+    }
+    if (txt) txt.textContent = 'Backend: Disconnected';
+    if (manual) toast('❌ Cloud Backend Unreachable');
+  }
+}
+setInterval(checkBackendHealth, 10000);
+setTimeout(checkBackendHealth, 500);
+
 </script></body></html>

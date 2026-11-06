@@ -523,13 +523,14 @@ public class MainActivity extends Activity {
                 }
             }
 
-            final String[] items = new String[devicesList.size() + 2];
+            final String[] items = new String[devicesList.size() + 3];
             for (int i = 0; i < devicesList.size(); i++) {
                 String dev = devicesList.get(i);
                 items[i] = (dev.equalsIgnoreCase(currentServer) ? "● [Active] " : "○ ") + dev;
             }
-            items[devicesList.size()] = "➕ Add New Device / Host Setup";
-            items[devicesList.size() + 1] = "🛡️ Elevate Host Admin via Windows UAC";
+            items[devicesList.size()] = "☁️ Sync Cloud Fleet (Neon / Vercel)";
+            items[devicesList.size() + 1] = "➕ Add New Device / Host Setup";
+            items[devicesList.size() + 2] = "🛡️ Elevate Host Admin via Windows UAC";
 
             AlertDialog.Builder builder = new AlertDialog.Builder(this);
             builder.setTitle("🖥️ Switch Device / Remote Host");
@@ -545,8 +546,10 @@ public class MainActivity extends Activity {
                         Toast.makeText(MainActivity.this, "Switched to: " + selected, Toast.LENGTH_SHORT).show();
                         loadServer(selected);
                     } else if (which == devicesList.size()) {
-                        showSetup();
+                        syncCloudFleetFromNeon();
                     } else if (which == devicesList.size() + 1) {
+                        showSetup();
+                    } else if (which == devicesList.size() + 2) {
                         requestAdminElevationOnHost();
                     }
                 }
@@ -556,6 +559,55 @@ public class MainActivity extends Activity {
         } catch (Exception e) {
             showSetup();
         }
+    }
+
+    private void syncCloudFleetFromNeon() {
+        Toast.makeText(this, "☁️ Fetching live fleet from Neon Cloud Coordinator...", Toast.LENGTH_SHORT).show();
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                int addedCount = 0;
+                try {
+                    URL u = new URL("https://project-x-alpha-lake.vercel.app/api/devices");
+                    HttpURLConnection conn = (HttpURLConnection) u.openConnection();
+                    conn.setRequestMethod("GET");
+                    conn.setConnectTimeout(5000);
+                    conn.setReadTimeout(5000);
+                    if (conn.getResponseCode() == 200) {
+                        java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(conn.getInputStream()));
+                        StringBuilder sb = new StringBuilder();
+                        String line;
+                        while ((line = reader.readLine()) != null) {
+                            sb.append(line);
+                        }
+                        reader.close();
+
+                        JSONObject resp = new JSONObject(sb.toString());
+                        JSONArray devices = resp.optJSONArray("devices");
+                        if (devices != null) {
+                            for (int i = 0; i < devices.length(); i++) {
+                                JSONObject dev = devices.getJSONObject(i);
+                                String target = dev.optString("tunnel_url", dev.optString("host_url", "")).trim();
+                                if (!target.isEmpty()) {
+                                    recordDeviceInHistory(target);
+                                    addedCount++;
+                                }
+                            }
+                        }
+                    }
+                    conn.disconnect();
+                } catch (Exception ignored) {}
+
+                final int finalAdded = addedCount;
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        Toast.makeText(MainActivity.this, "☁️ Cloud Sync: Updated " + finalAdded + " machine(s)", Toast.LENGTH_SHORT).show();
+                        showDeviceSelectorDialog();
+                    }
+                });
+            }
+        }).start();
     }
 
     private void requestAdminElevationOnHost() {

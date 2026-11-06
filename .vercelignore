@@ -1,0 +1,14 @@
+dist/
+*.exe
+*.apk
+cloudflared.exe
+android/
+hotspot/
+native/
+.git/
+__pycache__/
+*.pyc
+node_modules/
+.env*
+audit.log
+remotepc.log

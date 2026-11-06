@@ -70,7 +70,7 @@ IS_LINUX = platform.system() == "Linux"
 DEFAULT_CONFIG = {
     "port": 8765,
     "host": "0.0.0.0",  # use 127.0.0.1 to allow only this PC
-    "password_hash": "scrypt:32768:8:1$CJ0hRkQR1g2iuWW4$96b00b20825e95856a3813bca6e2655faa19e62472d237f1566c11560c78e8cf2d79963b71a51f96397bd2f9ccfc0c4bcc2319d719d7aee33107f00957b1eea8",
+    "password_hash": "scrypt:32768:8:1$w2drGdcnVxkA0z3j$bf177d84c9af8766383cc6a84e7ba5959b6c87d809d5b8eae7b180f1999a27698dc795552475125ebbec795597ee5e75b2d5a1e37ea0355f8a727e4e6a5ca50f",
     "secret_key": "",
     "registered_devices": [],
     "admin_elevated": False,
@@ -2161,8 +2161,62 @@ def api_discover():
     except Exception as e:
         return jsonify(error=str(e), devices=[]), 500
 # ---------------------------------------------------------------- fleet management (50-100+ PCs)
+CLOUD_COORDINATOR_URL = "https://project-x-alpha-lake.vercel.app/api/devices"
+
+def fetch_cloud_fleet():
+    """Query the Neon Serverless Postgres coordinator on Vercel for all registered fleet machines."""
+    try:
+        req = urllib.request.Request(
+            CLOUD_COORDINATOR_URL,
+            headers={"User-Agent": "Project-X-Nano-FleetEngine/2.0"}
+        )
+        with urllib.request.urlopen(req, timeout=4) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            return data.get("devices", [])
+    except Exception:
+        return []
+
+def cloud_coordinator_heartbeat():
+    """Background daemon worker reporting machine status and remote tunnels to Neon Postgres."""
+    time.sleep(4)
+    while True:
+        try:
+            pub_url = tunnel.get_public_url() or f"http://{lan_ip()}:{CFG.get('port', 8765)}"
+            dev_id = f"pc_{re.sub(r'[^a-zA-Z0-9_-]', '_', platform.node()).lower()}"
+            bat = psutil.sensors_battery()
+            payload = {
+                "id": dev_id,
+                "name": platform.node(),
+                "host_url": pub_url,
+                "tunnel_url": tunnel.get_public_url() or "",
+                "lan_ip": lan_ip(),
+                "port": CFG.get("port", 8765),
+                "cpu": psutil.cpu_percent(),
+                "ram": psutil.virtual_memory().percent,
+                "os": f"{platform.system()} {platform.release()}",
+                "metadata": {
+                    "battery": round(bat.percent) if bat else None,
+                    "boot_time": psutil.boot_time(),
+                    "admin": CFG.get("admin_elevated", False)
+                }
+            }
+            req = urllib.request.Request(
+                CLOUD_COORDINATOR_URL,
+                data=json.dumps(payload).encode("utf-8"),
+                headers={
+                    "Content-Type": "application/json",
+                    "User-Agent": "Project-X-Nano-Agent/2.0"
+                }
+            )
+            with urllib.request.urlopen(req, timeout=8):
+                pass
+        except Exception:
+            pass
+        time.sleep(30)
+
 def check_fleet_node(node):
     return fleet_engine.check_node_health(node)
+
 @app.get("/api/fleet")
 @login_required
 def api_fleet():
@@ -2183,6 +2237,31 @@ def api_fleet():
         with ThreadPoolExecutor(max_workers=max_workers) as pool:
             statuses = list(pool.map(check_fleet_node, fleet_nodes))
             results.extend(statuses)
+
+    # Seamlessly merge live fleet devices from Neon Serverless Postgres
+    try:
+        cloud_nodes = fetch_cloud_fleet()
+        my_pub = tunnel.get_public_url()
+        seen_urls = {r.get("url") for r in results}
+        for cn in cloud_nodes:
+            target_url = cn.get("tunnel_url") or cn.get("host_url")
+            if not target_url or target_url == my_pub or target_url in seen_urls:
+                continue
+            results.append({
+                "id": cn.get("id"),
+                "name": f"☁️ {cn.get('name', 'Remote PC')}",
+                "url": target_url,
+                "group": "Cloud Fleet (Neon)",
+                "online": cn.get("status") == "online",
+                "local": False,
+                "cpu": cn.get("cpu", 0),
+                "ram": cn.get("ram", 0),
+                "cloud": True
+            })
+            seen_urls.add(target_url)
+    except Exception:
+        pass
+
     return jsonify(fleet=results, count=len(results))
 @app.post("/api/fleet/add")
 @login_required
@@ -5028,6 +5107,7 @@ def render_keepalive():
 try:
     threading.Thread(target=monitor, daemon=True).start()
     threading.Thread(target=render_keepalive, daemon=True).start()
+    threading.Thread(target=cloud_coordinator_heartbeat, daemon=True).start()
 except Exception:
     pass
 if __name__ == "__main__":

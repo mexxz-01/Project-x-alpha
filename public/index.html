@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Project-X-Nano Central Cloud Hub</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Plus+Jakarta+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #07090e;
+      --card: rgba(15, 22, 38, 0.85);
+      --border: rgba(59, 130, 246, 0.2);
+      --accent: #3b82f6;
+      --green: #10b981;
+      --red: #ef4444;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+    }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      margin: 0;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      box-sizing: border-box;
+    }
+    .container {
+      width: 100%;
+      max-width: 900px;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .brand {
+      font-size: 20px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .badge {
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 600;
+      border: 1px solid currentColor;
+    }
+    .badge-neon { color: #00e699; background: rgba(0,230,153,0.1); }
+    .badge-online { color: var(--green); background: rgba(16,185,129,0.1); }
+    .badge-offline { color: var(--red); background: rgba(239,68,68,0.1); }
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px 20px;
+    }
+    .stat-val { font-size: 28px; font-weight: 800; color: var(--accent); }
+    .stat-label { font-size: 13px; color: var(--muted); margin-top: 4px; }
+    .device-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .device-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 18px;
+      background: rgba(9, 14, 26, 0.85);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+    }
+    .btn {
+      background: var(--accent);
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+    }
+    .btn-red { background: rgba(239,68,68,0.2); color: var(--red); border: 1px solid var(--red); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="brand">
+        <span>⚡ Project-X-Nano</span>
+        <span class="badge badge-neon">NEON POSTGRES CLOUD HUB</span>
+      </div>
+      <div>
+        <button class="btn" onclick="fetchFleet()">🔄 Refresh Fleet</button>
+      </div>
+    </header>
+
+    <div class="stats-row">
+      <div class="card">
+        <div class="stat-val" id="totalPcs">0</div>
+        <div class="stat-label">Total Registered PCs</div>
+      </div>
+      <div class="card">
+        <div class="stat-val" id="onlinePcs" style="color:var(--green)">0</div>
+        <div class="stat-label">Active Online Nodes</div>
+      </div>
+      <div class="card">
+        <div class="stat-val" style="color:#00e699">Active</div>
+        <div class="stat-label">Neon Serverless Storage</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0">📡 Live Multiple PC Fleet Devices</h3>
+      <div id="deviceList" class="device-grid">
+        <div style="color:var(--muted)">Connecting to Neon Postgres...</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    async function fetchFleet() {
+      try {
+        const res = await fetch('/api/devices');
+        const data = await res.json();
+        const devices = data.devices || [];
+        
+        let onlineCount = 0;
+        devices.forEach(d => { if (d.status === 'online') onlineCount++; });
+        document.getElementById('totalPcs').textContent = devices.length;
+        document.getElementById('onlinePcs').textContent = onlineCount;
+
+        const container = document.getElementById('deviceList');
+        if (!devices.length) {
+          container.innerHTML = '<div style="color:var(--muted);padding:10px 0">No host PCs registered yet. Start Project-X-Nano on any PC with auto-reporting enabled.</div>';
+          return;
+        }
+
+        container.innerHTML = devices.map(d => {
+          const isOnline = d.status === 'online';
+          const badge = isOnline ? '<span class="badge badge-online">ONLINE</span>' : '<span class="badge badge-offline">OFFLINE</span>';
+          const targetUrl = d.tunnel_url || d.host_url;
+          return `
+            <div class="device-item">
+              <div>
+                <div style="font-weight:700;font-size:15px;display:flex;align-items:center;gap:8px">
+                  💻 ${d.name} ${badge}
+                </div>
+                <div style="font-size:12px;color:var(--muted);font-family:'JetBrains Mono', monospace;margin-top:6px">
+                  URL: ${targetUrl} | CPU: ${d.cpu}% | RAM: ${d.ram}% | OS: ${d.os || 'Windows'}
+                </div>
+              </div>
+              <div style="display:flex;gap:8px">
+                <a href="${targetUrl}" target="_blank" class="btn">🎮 Control PC</a>
+                <button class="btn btn-red" onclick="removeDevice('${d.id}')">✕</button>
+              </div>
+            </div>
+          `;
+        }).join('');
+      } catch (err) {
+        document.getElementById('deviceList').innerHTML = '<div style="color:var(--red)">Failed to load fleet data from cloud hub.</div>';
+      }
+    }
+
+    async function removeDevice(id) {
+      if (!confirm('Remove this device from cloud hub?')) return;
+      await fetch('/api/devices?id=' + encodeURIComponent(id), { method: 'DELETE' });
+      fetchFleet();
+    }
+
+    fetchFleet();
+    setInterval(fetchFleet, 10000);
+  </script>
+</body>
+</html>

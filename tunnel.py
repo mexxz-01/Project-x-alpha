@@ -137,19 +137,20 @@ def start_tunnel(port: int = 8765, report_url: str = "", **kwargs) -> str:
             pass
 
         # 2. Update config.json with current url
-        if CONFIG_FILE.exists():
-            try:
-                cfg = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
-                cfg["last_public_url"] = url
-                if not report_url and cfg.get("tunnel_report_url"):
-                    report_url = cfg.get("tunnel_report_url")
-                CONFIG_FILE.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
-            except Exception:
-                pass
+        try:
+            import crypto
+            cfg = crypto.load_encrypted_config(CONFIG_FILE) or {}
+            cfg["last_public_url"] = url
+            if not report_url and cfg.get("tunnel_report_url"):
+                report_url = cfg.get("tunnel_report_url")
+            crypto.save_encrypted_config(cfg, CONFIG_FILE)
+        except Exception:
+            pass
 
-        # 3. Report to target server/webhook
-        if report_url:
-            report_public_url(url, report_url)
+        # 3. Report to target server/webhook or Central Cloud Coordinator
+        default_cloud_hub = "https://project-x-alpha-lake.vercel.app/api/devices"
+        target_report = report_url or default_cloud_hub
+        report_public_url(url, target_report)
 
         return url
     else:
@@ -157,7 +158,7 @@ def start_tunnel(port: int = 8765, report_url: str = "", **kwargs) -> str:
         return ""
 
 def report_public_url(url: str, report_url: str):
-    """Upload/POST public tunnel link to user's remote server, Discord, Telegram, or webhook."""
+    """Upload/POST public tunnel link to central Neon cloud coordinator, Discord, Telegram, or webhook."""
     if not report_url or not url or not report_url.startswith(("http://", "https://")):
         return
 
@@ -170,9 +171,14 @@ def report_public_url(url: str, report_url: str):
             }
         else:
             payload_data = {
-                "app": "Project-X-Nano",
+                "id": f"pc_{re.sub(r'[^a-zA-Z0-9_-]', '_', host_name).lower()}",
+                "name": host_name,
                 "host": host_name,
+                "host_url": url,
+                "tunnel_url": url,
                 "public_url": url,
+                "os": f"{platform.system()} {platform.release()}",
+                "app": "Project-X-Nano",
                 "content": f"Project-X-Nano Online: {url}",
                 "timestamp": time.time()
             }

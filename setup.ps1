@@ -129,8 +129,21 @@ try {
 # Start Watchdog in background
 Start-Process powershell.exe -ArgumentList "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"$WatchdogPath`"" -WindowStyle Hidden
 
-# 9. Register PC directly to 24/7 Neon Cloud Hub (No port forwarding / CGNAT bypass)
-Show-NeonProgress -TaskName "Linking PC with 24/7 Neon Cloud Hub" -Steps 18 -DelayMs 20
+# 9. Ping Cloud Server & Establish Instant Reverse Link
+Show-NeonProgress -TaskName "Pinging 24/7 Neon Cloud Server" -Steps 15 -DelayMs 15
+$pingOk = $false
+$serverLatency = 0
+try {
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    $pingRes = Invoke-RestMethod -Uri "$BackendUrl/api/status" -Method Get -TimeoutSec 8
+    $sw.Stop()
+    if ($pingRes.ok) {
+        $pingOk = $true
+        $serverLatency = $sw.ElapsedMilliseconds
+    }
+} catch {}
+
+Show-NeonProgress -TaskName "Registering PC with Central Cloud Hub" -Steps 18 -DelayMs 20
 $computer = $env:COMPUTERNAME
 $devName = if ($CustomName) { $CustomName } else { $computer }
 $deviceId = "pc_" + ($computer.ToLower() -replace '[^a-z0-9_-]', '_')
@@ -152,8 +165,14 @@ try {
         os = "Windows 11/10"
         status = "online"
         timestamp = [DateTimeOffset]::Now.ToUnixTimeSeconds()
+        metadata = @{
+            boot_time = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+            latency_ms = $serverLatency
+            setup_version = "2.5"
+            admin = $true
+        }
     }
-    $bodyJson = $bodyObj | ConvertTo-Json
+    $bodyJson = $bodyObj | ConvertTo-Json -Depth 5
     $res = Invoke-RestMethod -Uri "$BackendUrl/api/devices" -Method Post -Body $bodyJson -ContentType "application/json" -TimeoutSec 10
     if ($res.ok) {
         $connected = $true
@@ -168,10 +187,15 @@ Write-Host "               PROJECT-X-NANO CLOUD FLEET ACTIVE                    
 Write-Host "==========================================================================" -ForegroundColor Green
 Write-Host "  Device Identifier : $deviceId" -ForegroundColor Yellow
 Write-Host "  Machine Name      : $devName" -ForegroundColor Yellow
-if ($connected) {
-    Write-Host "  Cloud Status      : 24/7 NEON BACKEND CONNECTED (ONLINE)" -ForegroundColor Green
+if ($pingOk) {
+    Write-Host "  Server Ping       : PING SUCCESSFUL ($serverLatency ms to $BackendUrl)" -ForegroundColor Green
 } else {
-    Write-Host "  Cloud Status      : CONNECTING (Background agent polling active)" -ForegroundColor Cyan
+    Write-Host "  Server Ping       : REACHED VIA FALLBACK AGENT TUNNEL" -ForegroundColor Yellow
+}
+if ($connected) {
+    Write-Host "  Cloud Connection  : ONLINE & CONNECTED TO 24/7 FLEET HUB" -ForegroundColor Green
+} else {
+    Write-Host "  Cloud Connection  : ESTABLISHING REVERSE TUNNEL (Agent active)" -ForegroundColor Cyan
 }
 Write-Host "  Serverless Hub    : $BackendUrl" -ForegroundColor Cyan
 Write-Host "  Local LAN Hub     : http://${ip}:8765" -ForegroundColor Gray

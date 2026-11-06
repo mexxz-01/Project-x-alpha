@@ -70,7 +70,7 @@ IS_LINUX = platform.system() == "Linux"
 DEFAULT_CONFIG = {
     "port": 8765,
     "host": "0.0.0.0",  # use 127.0.0.1 to allow only this PC
-    "password_hash": "scrypt:32768:8:1$EjrTHKvILpxhnGnv$7ef5a05c213ed971a60e2b27c9e19da0e8806bfd60629f39e468943005f1ea9c36c02c86e9d65a19b59b57927a9b763ef3b8f77d2dff37710050b722f4755091",
+    "password_hash": "scrypt:32768:8:1$CJ0hRkQR1g2iuWW4$96b00b20825e95856a3813bca6e2655faa19e62472d237f1566c11560c78e8cf2d79963b71a51f96397bd2f9ccfc0c4bcc2319d719d7aee33107f00957b1eea8",
     "secret_key": "",
     "registered_devices": [],
     "admin_elevated": False,

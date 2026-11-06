@@ -6,8 +6,8 @@ echo ========================================================
 echo             Project-X-Nano Clean Uninstaller
 echo ========================================================
 echo.
-echo [!] Warning: This will stop and remove Project-X-Nano,
-echo     Cloudflare Tunnel, and the Persistent Watchdog.
+echo [!] Warning: This will stop and remove Project-X-Nano
+echo     and the Persistent Watchdog service.
 echo.
 
 set /p "CONFIRM=Are you sure you want to completely uninstall? (Y/N): "

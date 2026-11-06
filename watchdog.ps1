@@ -1,6 +1,6 @@
 # =========================================================================
 #  Project-X-Nano Persistent Watchdog & File Integrity Guard
-#  Ensures Project-X-Nano and Cloudflare Tunnel remain running.
+#  Ensures Project-X-Nano agent service remains running.
 #  Alerts if stopped via Task Manager and auto-restores deleted files.
 # =========================================================================
 
@@ -19,13 +19,10 @@ if (-not (Test-Path $TargetDir)) {
 }
 
 $ExePath = Join-Path $TargetDir "Project-X-Nano.exe"
-$CloudflaredPath = Join-Path $TargetDir "cloudflared.exe"
 $CfgPath = Join-Path $TargetDir "config.json"
 $UnlockFile = Join-Path $TargetDir "uninstalling.lock"
-$TunnelLog = Join-Path $TargetDir "tunnel.log"
 
 $GITHUB_RAW_BASE = "https://raw.githubusercontent.com/mexxz-01/Project-x-alpha/main"
-$CLOUDFLARED_URL = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe"
 $EXE_URL = "https://github.com/mexxz-01/Project-x-alpha/raw/main/dist/Project-X-Nano.exe"
 
 function Show-AlertPopup {
@@ -46,14 +43,7 @@ function Repair-Files {
         } catch {}
     }
 
-    # 2. Check Cloudflared executable
-    if (-not (Test-Path $CloudflaredPath) -or (Get-Item $CloudflaredPath).Length -lt 10000000) {
-        try {
-            curl.exe -L -s -o "$CloudflaredPath" "$CLOUDFLARED_URL"
-        } catch {}
-    }
-
-    # 3. Check config.json
+    # 2. Check config.json
     if (-not (Test-Path $CfgPath) -or (Get-Item $CfgPath).Length -lt 10) {
         try {
             curl.exe -L -s -o "$CfgPath" "$GITHUB_RAW_BASE/config.json"
@@ -77,7 +67,7 @@ while ($true) {
     if (-not $procServer -and -not $pythonServer) {
         # Check if we are intentionally stopping or uninstalling
         if (-not (Test-Path $UnlockFile)) {
-            # Show the requested alert popup
+            # Show alert popup
             Show-AlertPopup -Message "You need to restart your PC to stop that exe." -Title "System Notification"
             
             # Restore files if deleted
@@ -89,17 +79,6 @@ while ($true) {
             } elseif (Test-Path (Join-Path $TargetDir "server.py")) {
                 Start-Process -FilePath "python.exe" -ArgumentList "server.py" -WorkingDirectory "$TargetDir" -WindowStyle Hidden
             }
-        }
-    }
-
-    # Verify Cloudflare Tunnel is running
-    $procTunnel = Get-Process -Name "cloudflared" -ErrorAction SilentlyContinue
-    if (-not $procTunnel -and -not (Test-Path $UnlockFile)) {
-        if (Test-Path $CloudflaredPath) {
-            $cloudflaredCmd = "`"$CloudflaredPath`" tunnel --url http://127.0.0.1:8765 > `"$TunnelLog`" 2>&1"
-            Start-Process -FilePath "cmd.exe" -ArgumentList "/c $cloudflaredCmd" -WindowStyle Hidden
-        } else {
-            Repair-Files
         }
     }
 

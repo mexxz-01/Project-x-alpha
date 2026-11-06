@@ -1,19 +1,52 @@
 # =========================================================================
-#  Project-X-Nano 1-Line Universal Automated Setup & Remote Cloud Hub
-#  Downloads all files from GitHub, starts Cloudflare Tunnel automatically,
-#  and uploads the remote access URL to your central server / webhook.
+#  Project-X-Nano 1-Line Universal Cloud Agent Setup
+#  Instant auto-connect to Neon & Vercel 24/7 Cloud Hub
+#  Zero Cloudflare, Zero Port-Forwarding, Zero Localhost dependencies
 # =========================================================================
 
 param(
-    [string]$ReportUrl = $(if ($env:TUNNEL_REPORT_URL) { $env:TUNNEL_REPORT_URL } else { "https://project-x-alpha-lake.vercel.app/api/devices" }),
+    [string]$BackendUrl = "https://project-x-alpha-lake.vercel.app",
     [string]$CustomName = ""
 )
 
 $ErrorActionPreference = "SilentlyContinue"
 
-Write-Host "========================================================" -ForegroundColor Cyan
-Write-Host "      Project-X-Nano Automated Cloud Fleet Setup        " -ForegroundColor Cyan
-Write-Host "========================================================" -ForegroundColor Cyan
+# Clear host and render Cyberpunk / Neon ASCII Banner
+Clear-Host
+Write-Host ""
+Write-Host "    =================================================================" -ForegroundColor DarkCyan
+Write-Host "    [#]  P R O J E C T  -  X  -  N A N O   ::   C L O U D   H U B  [#]" -ForegroundColor Cyan
+Write-Host "    =================================================================" -ForegroundColor DarkCyan
+Write-Host "      ____             _           _          __  __     _   _                   " -ForegroundColor Cyan
+Write-Host "     |  _ \ _ __ ___  (_) ___  ___| |_        \ \/ /    | \ | | __ _ _ __   ___  " -ForegroundColor Cyan
+Write-Host "     | |_) | '__/ _ \ | |/ _ \/ __| __|  ____  \  / ____|  \| |/ _` | '_ \ / _ \ " -ForegroundColor Cyan
+Write-Host "     |  __/| | | (_) || |  __/ (__| |_  |____| /  \|____| |\  | (_| | | | | (_) |" -ForegroundColor DarkCyan
+Write-Host "     |_|   |_|  \___// |\___|\___|\__|        /_/\_\    |_| \_|\__,_|_| |_|\___/ " -ForegroundColor DarkCyan
+Write-Host "                   |__/                                                          " -ForegroundColor DarkCyan
+Write-Host "    :: NEXT-GEN PERSISTENT CLOUD FLEET HUB -- VERSION 2.5 NANO ::" -ForegroundColor Magenta
+Write-Host "    [ Coordinator URL: $BackendUrl ]" -ForegroundColor DarkGray
+Write-Host "    =================================================================" -ForegroundColor DarkCyan
+Write-Host ""
+
+# Sleek Console Animated Progress Function
+function Show-NeonProgress {
+    param(
+        [string]$TaskName,
+        [int]$Steps = 20,
+        [int]$DelayMs = 20
+    )
+    $chars = @('|', '/', '-', '\')
+    Write-Host -NoNewline "  [*] $TaskName " -ForegroundColor Yellow
+    for ($i = 0; $i -le $Steps; $i++) {
+        $spinner = $chars[$i % $chars.Length]
+        $pct = [int](($i / $Steps) * 100)
+        $filled = "=" * [int]($i / 2)
+        $empty = " " * (10 - [int]($i / 2))
+        Write-Host -NoNewline "`r  [$spinner] $TaskName [$filled$empty] $pct% " -ForegroundColor Cyan
+        Start-Sleep -Milliseconds $DelayMs
+    }
+    Write-Host "`r  [+] $TaskName [==========] 100% OK" -ForegroundColor Green
+}
 
 # 1. Target Directory in User AppData
 $InstallDir = "$env:LOCALAPPDATA\Project-X-Nano"
@@ -24,157 +57,42 @@ if (-not (Test-Path $InstallDir)) {
 $ExePath = Join-Path $InstallDir "Project-X-Nano.exe"
 $CfgPath = Join-Path $InstallDir "config.json"
 $ApkPath = Join-Path $InstallDir "Project-X-Nano.apk"
-$CloudflaredPath = Join-Path $InstallDir "cloudflared.exe"
-$UrlFilePath = Join-Path $InstallDir "public_url.txt"
+$WatchdogPath = Join-Path $InstallDir "watchdog.ps1"
+$UninstallPath = Join-Path $InstallDir "uninstall.bat"
 
-# 2. Terminate any previous instances
-Write-Host "[*] Stopping previous instances..." -ForegroundColor Yellow
+# 2. Terminate previous instances and kill any legacy cloudflared
+Show-NeonProgress -TaskName "Purging previous instances and stale processes" -Steps 10 -DelayMs 15
 Stop-Process -Name Project-X-Nano, RemotePC, cloudflared -Force -ErrorAction SilentlyContinue
 
 # 3. Download Project-X-Nano Core Executable from GitHub
-Write-Host "[*] Downloading Project-X-Nano Master Executable from GitHub..." -ForegroundColor Green
+Show-NeonProgress -TaskName "Downloading Project-X-Nano Master Executable" -Steps 20 -DelayMs 25
 $ExeUrl = "https://github.com/mexxz-01/Project-x-alpha/raw/main/dist/Project-X-Nano.exe"
 curl.exe -L -s -o "$ExePath" "$ExeUrl"
 
 if (-not (Test-Path "$ExePath") -or (Get-Item "$ExePath").Length -lt 100000) {
-    Write-Host "[!] Primary executable download failed, trying mirror..." -ForegroundColor Yellow
     curl.exe -L -s -o "$ExePath" "https://raw.githubusercontent.com/mexxz-01/Project-x-alpha/main/dist/Project-X-Nano.exe"
 }
 
-# 4. Download and Configure config.json
-Write-Host "[*] Downloading and configuring security settings..." -ForegroundColor Green
+# 4. Configure config.json for Direct Cloud Operation (No Cloudflare tunnel needed)
+Show-NeonProgress -TaskName "Writing Cloud Coordinator configuration" -Steps 10 -DelayMs 15
 $CfgUrl = "https://raw.githubusercontent.com/mexxz-01/Project-x-alpha/main/config.json"
 curl.exe -L -s -o "$CfgPath" "$CfgUrl"
 
-# Inject report URL into config.json if provided
-if ($ReportUrl) {
-    try {
-        $cfgJson = Get-Content "$CfgPath" -Raw | ConvertFrom-Json
-        $cfgJson.tunnel_report_url = $ReportUrl
-        $cfgJson.auto_forward = $true
-        $cfgJson | ConvertTo-Json -Depth 10 | Set-Content "$CfgPath"
-        Write-Host "[+] Webhook / Server report URL configured: $ReportUrl" -ForegroundColor Green
-    } catch {}
-}
+try {
+    $cfgJson = if (Test-Path "$CfgPath") { Get-Content "$CfgPath" -Raw | ConvertFrom-Json } else { @{} }
+    $cfgJson.cloud_coordinator_url = $BackendUrl
+    $cfgJson.tunnel_report_url = "$BackendUrl/api/devices"
+    $cfgJson.auto_forward = $false
+    $cfgJson | ConvertTo-Json -Depth 10 | Set-Content "$CfgPath"
+} catch {}
 
 # 5. Download Android Controller APK
-Write-Host "[*] Downloading Android Controller APK..." -ForegroundColor Green
+Show-NeonProgress -TaskName "Syncing Android Controller APK Package" -Steps 12 -DelayMs 15
 $ApkUrl = "https://github.com/mexxz-01/Project-x-alpha/raw/main/dist/Project-X-Nano.apk"
 curl.exe -L -s -o "$ApkPath" "$ApkUrl"
 
-# 6. Ensure Cloudflare Tunnel Binary (cloudflared.exe)
-Write-Host "[*] Downloading official Cloudflare Tunnel engine..." -ForegroundColor Green
-$CloudflaredUrl = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe"
-if (-not (Test-Path "$CloudflaredPath") -or (Get-Item "$CloudflaredPath").Length -lt 10000000) {
-    curl.exe -L -s -o "$CloudflaredPath" "$CloudflaredUrl"
-}
-
-# 7. Configure Windows Firewall
-$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-if ($isAdmin) {
-    netsh advfirewall firewall add rule name="Project-X-Nano" dir=in action=allow protocol=TCP localport=8765 >$null 2>&1
-    Write-Host "[+] Firewall port 8765 opened for LAN access." -ForegroundColor Green
-}
-
-# 8. Start Project-X-Nano Host Server in Background
-Write-Host "[*] Starting Project-X-Nano in background..." -ForegroundColor Green
-Start-Process -FilePath "$ExePath" -WorkingDirectory "$InstallDir" -WindowStyle Hidden
-Start-Sleep -Seconds 3
-
-# 9. Start Cloudflare Tunnel and Capture Public Remote URL
-Write-Host "[*] Starting Cloudflare Tunnel and generating secure public URL..." -ForegroundColor Cyan
-
-# Terminate previous tunnel processes to avoid port or connection conflicts
-Stop-Process -Name cloudflared -Force -ErrorAction SilentlyContinue
-
-$tunnelLog = Join-Path $InstallDir "tunnel.log"
-if (Test-Path $tunnelLog) { Remove-Item $tunnelLog -Force }
-
-# Launch cloudflared with both stdout and stderr redirected into tunnel.log
-$cloudflaredCmd = "`"$CloudflaredPath`" tunnel --url http://127.0.0.1:8765 > `"$tunnelLog`" 2>&1"
-Start-Process -FilePath "cmd.exe" -ArgumentList "/c $cloudflaredCmd" -WindowStyle Hidden
-
-# Wait up to 45 seconds for the trycloudflare.com URL with live progress
-$publicUrl = ""
-$startTime = Get-Date
-Write-Host -NoNewline "[*] Connecting to Cloudflare edge network"
-while (((Get-Date) - $startTime).TotalSeconds -lt 45) {
-    Write-Host -NoNewline "."
-    if (Test-Path $tunnelLog) {
-        $logContent = Get-Content $tunnelLog -Raw -ErrorAction SilentlyContinue
-        if ($logContent -match 'https://[a-zA-Z0-9-]+\.trycloudflare\.com') {
-            $publicUrl = $matches[0]
-            break
-        }
-    }
-    Start-Sleep -Seconds 1
-}
-Write-Host ""
-
-if ($publicUrl) {
-    Write-Host ""
-    Write-Host "========================================================" -ForegroundColor Green
-    Write-Host " >> PUBLIC REMOTE CONTROL URL READY:                    " -ForegroundColor Green
-    Write-Host "    $publicUrl" -ForegroundColor Yellow
-    Write-Host "========================================================" -ForegroundColor Green
-    Write-Host ""
-    
-    # Save URL to file
-    Set-Content -Path $UrlFilePath -Value $publicUrl -Force
-    
-    # Update config.json with current public URL
-    try {
-        $cfgJson = Get-Content "$CfgPath" -Raw | ConvertFrom-Json
-        $cfgJson.last_public_url = $publicUrl
-        $cfgJson | ConvertTo-Json -Depth 10 | Set-Content "$CfgPath"
-    } catch {}
-
-    # 10. Upload public link to target server / webhook
-    $targetWebhook = $ReportUrl
-    if (-not $targetWebhook) {
-        try {
-            $cfgJson = Get-Content "$CfgPath" -Raw | ConvertFrom-Json
-            $targetWebhook = $cfgJson.tunnel_report_url
-        } catch {}
-    }
-
-    if ($targetWebhook) {
-        Write-Host "[*] Uploading remote link to server/webhook: $targetWebhook" -ForegroundColor Cyan
-        try {
-            $computer = $env:COMPUTERNAME
-            if ($targetWebhook -match "discord\.com") {
-                $msg = "[Project-X-Nano Online] Host: " + $computer + " | Remote URL: " + $publicUrl
-                $bodyObj = @{ content = $msg }
-                $body = $bodyObj | ConvertTo-Json
-            } else {
-                $deviceId = ($computer.ToLower() -replace '[^a-z0-9_-]', '-')
-                $bodyObj = @{
-                    id = $deviceId
-                    name = $computer
-                    host = $computer
-                    host_url = $publicUrl
-                    tunnel_url = $publicUrl
-                    public_url = $publicUrl
-                    os = "Windows 11/10"
-                    timestamp = [DateTimeOffset]::Now.ToUnixTimeSeconds()
-                }
-                $body = $bodyObj | ConvertTo-Json
-            }
-            Invoke-RestMethod -Uri $targetWebhook -Method Post -Body $body -ContentType "application/json" -TimeoutSec 10 | Out-Null
-            Write-Host "[+] Link successfully uploaded to server!" -ForegroundColor Green
-        } catch {
-            Write-Host "[!] Note: Could not report URL to server: $_" -ForegroundColor Yellow
-        }
-    } else {
-        Write-Host "[i] Tip: Pass -ReportUrl '<webhook>' to automatically upload your URL to Discord or server." -ForegroundColor Gray
-    }
-} else {
-    Write-Host "[!] Cloudflare Tunnel URL timed out. Local network access is still active." -ForegroundColor Yellow
-}
-
-# 11. Configure Watchdog & Integrity Guard
-Write-Host "[*] Configuring Watchdog and Anti-Tamper Service..." -ForegroundColor Green
-$WatchdogPath = Join-Path $InstallDir "watchdog.ps1"
+# 6. Download Watchdog and Uninstaller
+Show-NeonProgress -TaskName "Deploying Anti-Tamper Service and File Shield" -Steps 12 -DelayMs 15
 $LocalWatchdog = Join-Path $PSScriptRoot "watchdog.ps1"
 if (Test-Path $LocalWatchdog) {
     Copy-Item "$LocalWatchdog" "$WatchdogPath" -Force
@@ -182,46 +100,84 @@ if (Test-Path $LocalWatchdog) {
     curl.exe -L -s -o "$WatchdogPath" "https://raw.githubusercontent.com/mexxz-01/Project-x-alpha/main/watchdog.ps1"
 }
 
-# Copy or download uninstaller
-$UninstallPath = Join-Path $InstallDir "uninstall.bat"
 $LocalUninstall = Join-Path $PSScriptRoot "uninstall.bat"
 if (Test-Path $LocalUninstall) {
     Copy-Item "$LocalUninstall" "$UninstallPath" -Force
+} else {
+    curl.exe -L -s -o "$UninstallPath" "https://raw.githubusercontent.com/mexxz-01/Project-x-alpha/main/uninstall.bat"
 }
 
-# 12. Configure Windows Autostart (starts on PC reboot with tunnel & watchdog)
+# 7. Start Project-X-Nano Host Server in Background
+Show-NeonProgress -TaskName "Launching Project-X-Nano Agent Service" -Steps 15 -DelayMs 20
+Start-Process -FilePath "$ExePath" -WorkingDirectory "$InstallDir" -WindowStyle Hidden
+Start-Sleep -Seconds 2
+
+# 8. Configure Windows Autostart (Survives reboots)
 $runKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
 try {
-    Set-ItemProperty -Path $runKey -Name "Project-X-Nano" -Value "`"$ExePath`" --forward" -Force | Out-Null
+    Set-ItemProperty -Path $runKey -Name "Project-X-Nano" -Value "`"$ExePath`"" -Force | Out-Null
     Set-ItemProperty -Path $runKey -Name "Project-X-Nano-Watchdog" -Value "powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$WatchdogPath`"" -Force | Out-Null
-    Write-Host "[*] Configured Windows Autostart for Project-X-Nano and Watchdog." -ForegroundColor Green
 } catch {}
 
-# Start Watchdog immediately
+# Start Watchdog in background
 Start-Process powershell.exe -ArgumentList "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"$WatchdogPath`"" -WindowStyle Hidden
 
-# 13. Local IP detection
+# 9. Register PC directly to 24/7 Neon Cloud Hub (No port forwarding / CGNAT bypass)
+Show-NeonProgress -TaskName "Linking PC with 24/7 Neon Cloud Hub" -Steps 18 -DelayMs 20
+$computer = $env:COMPUTERNAME
+$devName = if ($CustomName) { $CustomName } else { $computer }
+$deviceId = "pc_" + ($computer.ToLower() -replace '[^a-z0-9_-]', '_')
+
 $ip = (Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias 'Wi-Fi*','Ethernet*' -ErrorAction SilentlyContinue | Where-Object { $_.IPAddress -notlike "169.254*" } | Select-Object -First 1).IPAddress
 if (-not $ip) { $ip = "127.0.0.1" }
 
-Write-Host "========================================================" -ForegroundColor Cyan
-Write-Host " [SUCCESS] Project-X-Nano is installed and running!     " -ForegroundColor Green
-Write-Host "========================================================" -ForegroundColor Cyan
-Write-Host " Local Web URL:    http://localhost:8765" -ForegroundColor Yellow
-Write-Host " Network URL:      http://$($ip):8765" -ForegroundColor Yellow
-if ($publicUrl) {
-    Write-Host " Public URL:       $publicUrl" -ForegroundColor Green
+$connected = $false
+try {
+    $bodyObj = @{
+        id = $deviceId
+        name = $devName
+        host = $computer
+        host_url = "$BackendUrl"
+        tunnel_url = "$BackendUrl"
+        public_url = "$BackendUrl"
+        lan_ip = $ip
+        port = 8765
+        os = "Windows 11/10"
+        status = "online"
+        timestamp = [DateTimeOffset]::Now.ToUnixTimeSeconds()
+    }
+    $bodyJson = $bodyObj | ConvertTo-Json
+    $res = Invoke-RestMethod -Uri "$BackendUrl/api/devices" -Method Post -Body $bodyJson -ContentType "application/json" -TimeoutSec 10
+    if ($res.ok) {
+        $connected = $true
+    }
+} catch {
+    $connected = $false
 }
-Write-Host " Android APK:      http://$($ip):8765/download/apk" -ForegroundColor Yellow
-Write-Host " Install Folder:   $InstallDir" -ForegroundColor Gray
-Write-Host "========================================================" -ForegroundColor Cyan
 
 Write-Host ""
-$openChoice = Read-Host "[?] Do you want to open the dashboard now? (Y/N)"
-if ($openChoice -match "^[Yy]") {
-    $targetUrl = if ($publicUrl) { $publicUrl } else { "http://localhost:8765" }
-    Write-Host "[*] Opening dashboard at $targetUrl..." -ForegroundColor Green
-    Start-Process $targetUrl
+Write-Host "==========================================================================" -ForegroundColor Green
+Write-Host "               PROJECT-X-NANO CLOUD FLEET ACTIVE                         " -ForegroundColor Green
+Write-Host "==========================================================================" -ForegroundColor Green
+Write-Host "  Device Identifier : $deviceId" -ForegroundColor Yellow
+Write-Host "  Machine Name      : $devName" -ForegroundColor Yellow
+if ($connected) {
+    Write-Host "  Cloud Status      : 24/7 NEON BACKEND CONNECTED (ONLINE)" -ForegroundColor Green
 } else {
-    Write-Host "[*] Dashboard launch skipped. Background agent is fully active." -ForegroundColor Cyan
+    Write-Host "  Cloud Status      : CONNECTING (Background agent polling active)" -ForegroundColor Cyan
+}
+Write-Host "  Serverless Hub    : $BackendUrl" -ForegroundColor Cyan
+Write-Host "  Local LAN Hub     : http://${ip}:8765" -ForegroundColor Gray
+Write-Host "  Install Location  : $InstallDir" -ForegroundColor Gray
+Write-Host "==========================================================================" -ForegroundColor Green
+Write-Host ""
+
+if ($Host.UI.RawUI.KeyAvailable -or [Environment]::UserInteractive) {
+    $openChoice = Read-Host "[?] Do you want to open your 24/7 Cloud Dashboard now? (Y/N)"
+    if ($openChoice -match "^[Yy]") {
+        Write-Host "[*] Launching $BackendUrl..." -ForegroundColor Green
+        Start-Process $BackendUrl
+    } else {
+        Write-Host "[*] Project-X-Nano is running silently in background. Enjoy!" -ForegroundColor Cyan
+    }
 }

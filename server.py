@@ -2361,6 +2361,25 @@ def cloud_agent_worker():
                                     daemon=True
                                 ).start()
                                 result["msg"] = "Message popup displayed on host PC."
+                        elif cmd_action == "api_proxy":
+                            endpoint = str(payload.get("endpoint", "")).strip().lstrip("/")
+                            method = str(payload.get("method", "POST")).upper()
+                            req_data = payload.get("data")
+                            token = payload.get("token") or generate_jwt_token("cloud-coordinator")
+                            headers = {
+                                "Content-Type": "application/json",
+                                "Authorization": f"Bearer {token}"
+                            }
+                            with app.test_client() as client:
+                                if method == "GET":
+                                    resp = client.get(f"/api/{endpoint}", headers=headers)
+                                else:
+                                    resp = client.post(f"/api/{endpoint}", json=req_data, headers=headers)
+                                result["status_code"] = resp.status_code
+                                try:
+                                    result["data"] = resp.get_json()
+                                except Exception:
+                                    result["data"] = resp.get_data(as_text=True)
                         else:
                             error_msg = f"Unknown command: {cmd_action}"
 

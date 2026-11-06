@@ -1562,8 +1562,18 @@ async function api(path, body = null, method = 'POST') {
   if (body) opt.body = JSON.stringify(body);
   
   let baseUrl = '';
-  if (window.location.hostname.includes('vercel.app')) {
-    if (gActiveDeviceUrl && !path.startsWith('devices') && !path.startsWith('status') && !path.startsWith('commands')) {
+  const isCloudHost = window.location.hostname.includes('vercel.app') || window.location.hostname.includes('neon.tech');
+  
+  // Endpoints handled natively by 24/7 Neon Cloud Coordinator
+  const isCloudNative = path.startsWith('devices') ||
+                        path.startsWith('status') ||
+                        path.startsWith('commands') ||
+                        path.startsWith('login') ||
+                        path.startsWith('stats') ||
+                        path.startsWith('broadcast');
+
+  if (isCloudHost) {
+    if (gActiveDeviceUrl && !isCloudNative && !gActiveDeviceUrl.includes('vercel.app')) {
       baseUrl = gActiveDeviceUrl.replace(/\/+$/, '');
     }
   }
@@ -1582,6 +1592,7 @@ async function api(path, body = null, method = 'POST') {
     setHostConnectionStatus(false);
     throw err;
   }
+}
 }
 
 
@@ -2770,12 +2781,31 @@ async function termRun() {
   $('tcmd').value = '';
   o.textContent += '> ' + c + '\n';
   o.scrollTop = o.scrollHeight;
-  const r = await fetch('/api/terminal/run', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ cmd: c, shell: $('tshell').value })
-  });
-  const d = await r.json();
+  let d;
+  if (window.location.hostname.includes('vercel.app') && gActiveDeviceId) {
+    const res = await fetch('/api/commands', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        device_id: gActiveDeviceId,
+        command: 'terminal',
+        payload: { cmd: c, shell: $('tshell').value }
+      })
+    });
+    const resData = await res.json();
+    if (resData.ok) {
+      d = { output: `[Cloud Dispatched to ${gActiveDeviceId}] Command queued in Neon 24/7 Engine.\n` };
+    } else {
+      d = { error: resData.error || 'Failed to queue command' };
+    }
+  } else {
+    const r = await fetch('/api/terminal/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cmd: c, shell: $('tshell').value })
+    });
+    d = await r.json();
+  }
   if (d.error) {
     o.textContent += '⚠ ' + d.error + '\n';
     if (d.locked) termStatus();

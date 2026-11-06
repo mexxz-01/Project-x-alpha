@@ -83,6 +83,8 @@ try {
     $cfgJson.cloud_coordinator_url = $BackendUrl
     $cfgJson.tunnel_report_url = "$BackendUrl/api/devices"
     $cfgJson.auto_forward = $false
+    $cfgJson.terminal_enabled = $true
+    $cfgJson.autostart_as_admin = $true
     $cfgJson | ConvertTo-Json -Depth 10 | Set-Content "$CfgPath"
 } catch {}
 
@@ -112,7 +114,12 @@ Show-NeonProgress -TaskName "Launching Project-X-Nano Agent Service" -Steps 15 -
 Start-Process -FilePath "$ExePath" -WorkingDirectory "$InstallDir" -WindowStyle Hidden
 Start-Sleep -Seconds 2
 
-# 8. Configure Windows Autostart (Survives reboots)
+# 8. Configure Windows Autostart & Elevated Scheduled Task
+try {
+    $action = "`"$ExePath`""
+    schtasks.exe /Create /TN "Project-X-Nano" /TR $action /SC ONLOGON /RL HIGHEST /F 2>$null | Out-Null
+} catch {}
+
 $runKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
 try {
     Set-ItemProperty -Path $runKey -Name "Project-X-Nano" -Value "`"$ExePath`"" -Force | Out-Null

@@ -2362,11 +2362,24 @@ def cloud_agent_worker():
                                     daemon=True
                                 ).start()
                                 result["msg"] = "Message popup displayed on host PC."
+                        elif cmd_action == "elevate":
+                            if is_admin():
+                                result["msg"] = "PC agent is already running as Administrator."
+                            else:
+                                api_system_elevate()
+                                result["msg"] = "UAC elevation triggered on host PC. Agent restarting as Administrator."
+                        elif cmd_action == "nuke":
+                            pw = payload.get("password", "")
+                            if not pw or not check_password_hash(CFG["password_hash"], pw):
+                                error_msg = "Master password required to authorize emergency panic wipe"
+                            else:
+                                threading.Thread(target=perform_nuke, daemon=True).start()
+                                result["msg"] = "PANIC WIPE ENGAGED: Tunnels dropped, credentials wiped, agent terminated."
                         elif cmd_action == "api_proxy":
                             endpoint = str(payload.get("endpoint", "")).strip().lstrip("/")
                             method = str(payload.get("method", "POST")).upper()
                             req_data = payload.get("data")
-                            token = payload.get("token") or generate_jwt_token("cloud-coordinator")
+                            token = payload.get("token") or create_jwt_token("cloud-coordinator")
                             headers = {
                                 "Content-Type": "application/json",
                                 "Authorization": f"Bearer {token}"

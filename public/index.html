@@ -780,8 +780,6 @@ button.acc, .btn.acc {
 }
 </style>
 
-</div>
-
   <!-- Top App Header -->
   <header class="app-header">
     <div class="app-brand">
@@ -1657,7 +1655,8 @@ setInterval(async () => {
       if (res.ok) {
         setHostConnectionStatus(true);
       } else if (res.status === 401) {
-        attemptAutoConnect(); fetchCloudDevices(); setInterval(fetchCloudDevices, 15000);
+        localStorage.removeItem('pxn_jwt_token');
+        show(false);
       }
     } catch (e) {
       setHostConnectionStatus(false);
@@ -1736,36 +1735,44 @@ let gDeviceId = localStorage.getItem('pxn_device_id') || ('dev_' + Math.random()
 localStorage.setItem('pxn_device_id', gDeviceId);
 
 async function login() {
-  const pwInput = $('pw');
-  const remember = $('chkRemember') ? $('chkRemember').checked : true;
+  const pwInput = pw;
+  const remember = chkRemember ? chkRemember.checked : true;
+  const btn = btnLoginSubmit;
 
-  let pw = pwInput ? pwInput.value : '';
-  if (!pw && remember) {
-    // Plain password is never loaded from localStorage for security
-    pw = '';
-  }
+  const pw = pwInput ? pwInput.value.trim() : '';
 
   if (!pw) {
-    toast('⚠️ Please enter Master Password');
+    toast('Please enter Master Password');
     if (pwInput) pwInput.focus();
     return;
   }
 
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Connecting to 24/7 Cloud...';
+  }
+
   try {
-    const d = await api('login', {
-      password: pw,
-      remember: remember,
-      device_id: gDeviceId,
-      device_name: navigator.userAgent.includes('Mobile') ? 'Mobile Device' : 'Desktop Browser'
+    const headers = { 'Content-Type': 'application/json' };
+    const res = await fetch('/api/login', {
+      method: 'POST',
+      headers,
+      credentials: 'include',
+      body: JSON.stringify({
+        password: pw,
+        remember: remember,
+        device_id: gDeviceId,
+        device_name: navigator.userAgent.includes('Mobile') ? 'Mobile Device' : 'Desktop Browser'
+      })
     });
 
-    if (d.ok) {
+    const d = await res.json().catch(() => ({}));
+
+    if (res.ok && (d.ok || d.token)) {
       if (remember) {
         localStorage.setItem('pxn_remember', 'true');
-        localStorage.removeItem('pxn_saved_pw');
       } else {
         localStorage.removeItem('pxn_remember');
-        localStorage.removeItem('pxn_saved_pw');
       }
 
       if (d.token) {
@@ -1774,38 +1781,41 @@ async function login() {
 
       if (pwInput) pwInput.value = '';
       show(true);
-      toast('⚡ Connected to Host PC');
+      toast('Connected to Project-X-Nano Cloud Hub');
     } else {
-      toast('❌ ' + (d.error || 'Authentication Failed'));
+      toast('Login Failed: ' + (d.error || 'Invalid password or server error'));
+      if (pwInput) {
+        pwInput.focus();
+        pwInput.select();
+      }
     }
   } catch (e) {
-    toast('❌ Connection failed');
+    toast('Connection Error: ' + (e.message || 'Cannot reach cloud coordinator'));
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Connect to PC';
+    }
   }
 }
-
 async function attemptAutoConnect() {
   const remember = localStorage.getItem('pxn_remember') !== 'false';
   const savedToken = localStorage.getItem('pxn_jwt_token');
 
-  if (savedToken) {
+  if (savedToken && remember) {
     try {
-      const d = await api('stats');
-      if (!d.error) {
+      const res = await fetch('/api/stats', {
+        headers: { 'Authorization': 'Bearer ' + savedToken },
+        credentials: 'include'
+      });
+      if (res.ok) {
         show(true);
-        toast('⚡ Session restored');
+        toast('Session restored via 24/7 Cloud Hub');
         return;
       }
     } catch(e) {}
   }
-
-  if (remember) {
-  // plain password storage removed for security
-    if (savedPw && $('pw') && !$('pw').value) {
-      $('pw').value = savedPw;
-    }
-  }
 }
-
 async function logout() {
   localStorage.removeItem('pxn_jwt_token');
   await api('logout', {});

@@ -705,53 +705,11 @@ button.acc, .btn.acc {
 }
 </style></head><body>
 
-<!-- 24/7 Cloud Fleet Device Selector Bar -->
-<div id="cloudFleetBar" style="background:linear-gradient(180deg, rgba(11,17,32,0.98), rgba(7,10,19,0.95));border-bottom:1px solid rgba(59,130,246,0.22);padding:10px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;font-family:var(--font-sans);font-size:13px;position:sticky;top:0;z-index:9999;backdrop-filter:blur(16px);box-shadow:0 4px 20px rgba(0,0,0,0.45);">
-  <div style="display:flex;align-items:center;gap:14px;">
-    <div style="font-weight:800;color:#f8fafc;display:flex;align-items:center;gap:8px;font-size:15px;letter-spacing:-0.02em;">
-      <span style="color:#38bdf8;text-shadow:0 0 10px rgba(56,189,248,0.5);">⚡</span> Project-X-Nano
-    </div>
-    <span style="background:rgba(0,230,153,0.12);color:#00e699;border:1px solid rgba(0,230,153,0.3);padding:3px 10px;border-radius:999px;font-size:10px;font-weight:700;letter-spacing:0.04em;">NEON REALTIME</span>
-    
-    <!-- Backend Server Connection Status Indicator -->
-    <div id="backendServerStatusPill" style="display:inline-flex;align-items:center;gap:6px;background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.3);color:#34d399;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:600;font-family:var(--font-mono);transition:all 0.3s ease;">
-      <span id="backendStatusDot" style="width:7px;height:7px;border-radius:50%;background:#10b981;box-shadow:0 0 8px #10b981;display:inline-block;animation:pulseDot 2s infinite;"></span>
-      <span id="backendStatusText">Backend: Connected (24/7 Edge)</span>
-    </div>
-  </div>
-
-  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-    <!-- Active Target PC Fleet Dropdown -->
-    <div style="display:flex;align-items:center;gap:8px;">
-      <span style="color:var(--text-muted);font-size:12px;font-weight:500;">Target PC:</span>
-      <select id="cloudTargetPcSelect" onchange="switchCloudTargetPc(this.value)" style="background:#0f172a;color:#f8fafc;border:1px solid rgba(59,130,246,0.3);border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600;outline:none;cursor:pointer;transition:border-color 0.2s ease;">
-        <option value="">Scanning Fleet...</option>
-      </select>
-    </div>
-
-    <!-- Quick Action Buttons -->
-    <button class="btn" style="padding:6px 12px;font-size:11px;background:#1e293b;border-color:rgba(255,255,255,0.1);" onclick="checkBackendHealth(true)" title="Ping Cloud Backend Server">⚡ Test Server</button>
-    <button class="btn" style="padding:6px 12px;font-size:11px;background:#1e293b;border-color:rgba(255,255,255,0.1);" onclick="fetchCloudDevices(true)" title="Rescan Cloud Fleet">🔄 Refresh Fleet</button>
-  </div>
-</div>
-
-<style>
-@keyframes pulseDot {
-  0% { transform: scale(0.95); opacity: 0.7; }
-  50% { transform: scale(1.15); opacity: 1; }
-  100% { transform: scale(0.95); opacity: 0.7; }
-}
-</style>
-
-</div>
-
-
-
 <!-- Connection Reconnect Banner -->
 <div id="reconnectBanner">🔄 Reconnecting to Host PC Server...</div>
 
 <!-- Login Modal -->
-<div id="login" class="card" style="display:none;max-width:420px;margin:70px auto;text-align:center;box-shadow:0 12px 40px rgba(0,0,0,0.6)">
+<div id="login" class="card" style="display:block;max-width:420px;margin:70px auto;text-align:center;box-shadow:0 12px 40px rgba(0,0,0,0.6)">
   <div style="margin-bottom:20px">
     <div style="width:64px;height:64px;margin:0 auto 12px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg, #06b6d4, #3b82f6);border-radius:18px;box-shadow:0 8px 24px rgba(6,182,212,0.3)">
       <span style="font-size:32px">⚡</span>
@@ -784,6 +742,46 @@ button.acc, .btn.acc {
 
 <!-- Main Application -->
 <div id="main" style="display:none">
+<!-- 24/7 Cloud Fleet Device Selector Bar -->
+<div id="cloudFleetBar" style="background:linear-gradient(180deg, rgba(11,17,32,0.98), rgba(7,10,19,0.95));border-bottom:1px solid rgba(59,130,246,0.22);padding:10px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;font-family:var(--font-sans);font-size:13px;position:sticky;top:0;z-index:9999;backdrop-filter:blur(16px);box-shadow:0 4px 20px rgba(0,0,0,0.45);">
+  <div style="display:flex;align-items:center;gap:14px;">
+    <div style="font-weight:800;color:#f8fafc;display:flex;align-items:center;gap:8px;font-size:15px;letter-spacing:-0.02em;">
+      <span style="color:#38bdf8;text-shadow:0 0 10px rgba(56,189,248,0.5);">⚡</span> Project-X-Nano
+    </div>
+    <span style="background:rgba(0,230,153,0.12);color:#00e699;border:1px solid rgba(0,230,153,0.3);padding:3px 10px;border-radius:999px;font-size:10px;font-weight:700;letter-spacing:0.04em;">NEON REALTIME</span>
+    
+    <!-- Backend Server Connection Status Indicator -->
+    <div id="backendServerStatusPill" style="display:inline-flex;align-items:center;gap:6px;background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.3);color:#34d399;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:600;font-family:var(--font-mono);transition:all 0.3s ease;">
+      <span id="backendStatusDot" style="width:7px;height:7px;border-radius:50%;background:#10b981;box-shadow:0 0 8px #10b981;display:inline-block;animation:pulseDot 2s infinite;"></span>
+      <span id="backendStatusText">Backend: Connected (24/7 Edge)</span>
+    </div>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+    <!-- Active Target PC Fleet Dropdown -->
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span style="color:var(--text-muted);font-size:12px;font-weight:500;">Target PC:</span>
+      <select id="cloudTargetPcSelect" onchange="switchCloudTargetPc(this.value)" style="background:#0f172a;color:#f8fafc;border:1px solid rgba(59,130,246,0.3);border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600;outline:none;cursor:pointer;transition:border-color 0.2s ease;">
+        <option value="">No Active Fleet Devices</option>
+      </select>
+    </div>
+
+    <!-- Quick Action Buttons -->
+    <button class="btn" style="padding:6px 12px;font-size:11px;background:#1e293b;border-color:rgba(255,255,255,0.1);" onclick="checkBackendHealth(true)" title="Ping Cloud Backend Server">⚡ Test Server</button>
+    <button class="btn" style="padding:6px 12px;font-size:11px;background:#1e293b;border-color:rgba(255,255,255,0.1);" onclick="fetchCloudDevices(true)" title="Rescan Cloud Fleet">🔄 Refresh Fleet</button>
+  </div>
+</div>
+
+<style>
+@keyframes pulseDot {
+  0% { transform: scale(0.95); opacity: 0.7; }
+  50% { transform: scale(1.15); opacity: 1; }
+  100% { transform: scale(0.95); opacity: 0.7; }
+}
+</style>
+
+</div>
+
   <!-- Top App Header -->
   <header class="app-header">
     <div class="app-brand">
@@ -859,7 +857,7 @@ button.acc, .btn.acc {
         </div>
         <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-muted);margin-top:10px">
           <span id="osT">Windows</span>
-          <span id="batT">🔋 Checking…</span>
+          <span id="batT">⚡ Power Status</span>
         </div>
       </div>
       <!-- Quick Commands -->
@@ -929,7 +927,7 @@ button.acc, .btn.acc {
       </div>
 
       <div class="row">
-        <button id="autoB" onclick="autoTog()">🚀 Start Backend with PC: Checking…</button>
+        <button id="autoB" onclick="autoTog()">🚀 Start Backend with PC: Ready</button>
         <button onclick="askNotif()">🔔 Enable Notifications</button>
       </div>
     </div>
@@ -970,7 +968,7 @@ button.acc, .btn.acc {
         <span>📡 Local Subnet Discovery</span>
         <button onclick="discover()" style="padding:4px 10px;font-size:12px">🔍 Scan Subnet</button>
       </h2>
-      <div id="devList" class="stat" style="flex-direction:column;gap:6px">Scanning subnet for Project-X-Nano nodes…</div>
+      <div id="devList" class="stat" style="flex-direction:column;gap:6px">Local subnet scanning ready. Click Scan below.</div>
     </div>
   </div>
 
@@ -1092,7 +1090,7 @@ button.acc, .btn.acc {
         </button>
       </div>
       <div style="margin-top:10px;font-size:11px;color:var(--text-muted)">
-        💡 <b>Host Keyboard Bypass:</b> Type <code>mexxz</code> on the physical keyboard to unlock immediately.
+        💡 <b>Host Emergency Bypass:</b> Authorized keyboard bypass shortcut configured on host PC.
       </div>
     </div>
 
@@ -1114,7 +1112,7 @@ button.acc, .btn.acc {
         </button>
       </div>
       <div style="margin-top:10px;font-size:11px;color:var(--text-muted)">
-        💡 <b>Secret Host Bypass:</b> Typing <code>mexxz</code> on the physical keyboard of the PC will also immediately exit the fake update screen.
+        💡 <b>Host Emergency Bypass:</b> Authorized keyboard bypass shortcut configured on host PC.
       </div>
     </div>
 
@@ -1240,7 +1238,7 @@ button.acc, .btn.acc {
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px">
         <div>
           <h2 style="margin:0">⚡ Live Task &amp; Process Manager</h2>
-          <span id="procSummary" style="font-size:12px;color:var(--text-muted)">Loading process metrics…</span>
+          <span id="procSummary" style="font-size:12px;color:var(--text-muted)">Process metrics ready</span>
         </div>
         <div style="display:flex;gap:8px;align-items:center">
           <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);cursor:pointer">
@@ -1288,7 +1286,7 @@ button.acc, .btn.acc {
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px">
         <div>
           <h2 style="margin:0">🌐 Active Listening Ports &amp; Sockets</h2>
-          <span id="portsSummary" style="font-size:12px;color:var(--text-muted)">Scanning network bindings…</span>
+          <span id="portsSummary" style="font-size:12px;color:var(--text-muted)">Listening ports ready</span>
         </div>
         <button class="btn acc" style="padding:6px 12px;font-size:12px" onclick="loadPorts()">🔄 Scan Ports</button>
       </div>
@@ -1558,18 +1556,28 @@ async function api(path, body = null, method = 'POST') {
   const headers = { 'Content-Type': 'application/json' };
   const token = localStorage.getItem('pxn_jwt_token');
   if (token) headers['Authorization'] = 'Bearer ' + token;
-  const opt = { method: body ? method : 'GET', headers };
+  
+  // AbortController for timeout resilience (12s timeout)
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 12000);
+
+  const opt = { 
+    method: body ? method : 'GET', 
+    headers,
+    credentials: 'include',
+    signal: controller.signal
+  };
   if (body) opt.body = JSON.stringify(body);
   
   let baseUrl = '';
   const isCloudHost = window.location.hostname.includes('vercel.app') || window.location.hostname.includes('neon.tech');
   
   // Endpoints handled natively by 24/7 Neon Cloud Coordinator
-  const isCloudNative = path.startsWith('devices') ||
-                        path.startsWith('status') ||
-                        path.startsWith('commands') ||
-                        path.startsWith('login') ||
-                        path.startsWith('stats') ||
+  const isCloudNative = path.startsWith('devices') || 
+                        path.startsWith('status') || 
+                        path.startsWith('commands') || 
+                        path.startsWith('login') || 
+                        path.startsWith('stats') || 
                         path.startsWith('broadcast');
 
   if (isCloudHost) {
@@ -1581,19 +1589,35 @@ async function api(path, body = null, method = 'POST') {
   try {
     const fullPath = baseUrl ? `${baseUrl}/api/${path}` : `/api/${path}`;
     const res = await fetch(fullPath, opt);
+    clearTimeout(timeoutId);
+
     if (res.status === 401) {
       localStorage.removeItem('pxn_jwt_token');
       show(false);
-      return { error: 'Unauthorized' };
+      return { error: 'Unauthorized: Session expired or invalid' };
+    }
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      try {
+        const jsonErr = JSON.parse(errText);
+        return { error: jsonErr.error || `HTTP error ${res.status}` };
+      } catch(e) {
+        return { error: `Request failed with HTTP ${res.status}` };
+      }
     }
     setHostConnectionStatus(true);
     return await res.json();
   } catch (err) {
+    clearTimeout(timeoutId);
     setHostConnectionStatus(false);
+    if (err.name === 'AbortError') {
+      return { error: 'Request timed out. Target PC or backend is unreachable.' };
+    }
     throw err;
   }
 }
-}
+
+
 
 
 /* ================= CONNECTION MONITOR & RECONNECT ================= */
@@ -1680,7 +1704,8 @@ async function login() {
 
   let pw = pwInput ? pwInput.value : '';
   if (!pw && remember) {
-    pw = localStorage.getItem('pxn_saved_pw') || '';
+    // Plain password is never loaded from localStorage for security
+    pw = '';
   }
 
   if (!pw) {
@@ -1700,7 +1725,7 @@ async function login() {
     if (d.ok) {
       if (remember) {
         localStorage.setItem('pxn_remember', 'true');
-        localStorage.setItem('pxn_saved_pw', pw);
+        localStorage.removeItem('pxn_saved_pw');
       } else {
         localStorage.removeItem('pxn_remember');
         localStorage.removeItem('pxn_saved_pw');
@@ -1737,7 +1762,7 @@ async function attemptAutoConnect() {
   }
 
   if (remember) {
-    const savedPw = localStorage.getItem('pxn_saved_pw');
+  // plain password storage removed for security
     if (savedPw && $('pw') && !$('pw').value) {
       $('pw').value = savedPw;
     }
@@ -2879,19 +2904,19 @@ if ($('chkRemember')) {
   });
 }
 
-// Initial check: if already authenticated via session cookie or JWT, show dashboard immediately;
-// otherwise, attempt auto-connect from saved credentials.
-fetch('/api/stats').then(r => {
-  if (r.ok) {
-    show(true);
-  } else {
+// Initial check: verify session securely with backend before displaying dashboard
+fetch('/api/login', { credentials: 'include', headers: localStorage.getItem('pxn_jwt_token') ? { 'Authorization': 'Bearer ' + localStorage.getItem('pxn_jwt_token') } : {} })
+  .then(r => r.json())
+  .then(data => {
+    if (data.authenticated || data.ok) {
+      show(true);
+    } else {
+      show(false);
+    }
+  })
+  .catch(() => {
     show(false);
-    attemptAutoConnect(); fetchCloudDevices(); setInterval(fetchCloudDevices, 15000);
-  }
-}).catch(() => {
-  show(false);
-  attemptAutoConnect(); fetchCloudDevices(); setInterval(fetchCloudDevices, 15000);
-});
+  });
 
 async function checkBackendHealth(manual = false) {
   const pill = document.getElementById('backendServerStatusPill');

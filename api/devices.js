@@ -1,9 +1,8 @@
 const { getDb, initSchema } = require('./db');
+const { setCorsHeaders, authenticateRequest } = require('./auth_util');
 
 module.exports = async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  setCorsHeaders(req, res);
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -13,8 +12,13 @@ module.exports = async function handler(req, res) {
     await initSchema();
     const sql = getDb();
 
-    // 1. GET: List all registered fleet devices and mark offline if heartbeat expired (> 90s)
+    // 1. GET: List all registered fleet devices (Protected: requires admin session)
     if (req.method === 'GET') {
+      const session = authenticateRequest(req);
+      if (!session) {
+        return res.status(401).json({ ok: false, error: 'Authentication required to view device fleet.' });
+      }
+
       const rows = await sql.query(`
         SELECT 
           id, name, host_url, tunnel_url, public_ip, lan_ip, port, cpu, ram, os,
@@ -29,10 +33,9 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ ok: true, count: rows.length, devices: rows });
     }
 
-    // 2. POST: Register or Heartbeat from Host Device
+    // 2. POST: Register or Heartbeat from Host Device Agent
     if (req.method === 'POST') {
       const body = req.body || {};
-      // Fallback: If id is omitted (e.g. from setup.ps1 or curl reporting), derive id from host name or generate one
       const rawHost = body.host || body.hostname || body.name || '';
       const fallbackId = rawHost ? rawHost.toLowerCase().replace(/[^a-z0-9_-]/g, '-') : ('device-' + Date.now().toString(36));
       const id = String(body.id || body.device_id || fallbackId).trim();
@@ -46,7 +49,7 @@ module.exports = async function handler(req, res) {
       const os = String(body.os || body.platform || '').trim();
       const metadata = JSON.stringify(body.metadata || body.stats || {});
 
-      const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
+      const clientIp = (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').split(',')[0].trim();
 
       if (!id) {
         return res.status(400).json({ error: 'Device ID is required.' });
@@ -78,8 +81,13 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ ok: true, msg: `Heartbeat registered for ${name}`, id });
     }
 
-    // 3. DELETE: Remove device from cloud coordinator
+    // 3. DELETE: Remove device from cloud coordinator (Protected: requires admin session)
     if (req.method === 'DELETE') {
+      const session = authenticateRequest(req);
+      if (!session) {
+        return res.status(401).json({ ok: false, error: 'Authentication required to delete a device.' });
+      }
+
       const id = String(req.query.id || (req.body && req.body.id) || '').trim();
       if (!id) return res.status(400).json({ error: 'Device ID required.' });
       await sql.query(`DELETE FROM fleet_devices WHERE id = $1;`, [id]);
@@ -88,7 +96,7 @@ module.exports = async function handler(req, res) {
 
     return res.status(405).json({ error: 'Method Not Allowed' });
   } catch (err) {
-    console.error('API Error:', err);
-    return res.status(500).json({ ok: false, error: err.message || 'Internal Server Error' });
+    console.error('API Error:', err.message);
+    return res.status(500).json({ ok: false, error: 'Internal server error while processing devices.' });
   }
 };

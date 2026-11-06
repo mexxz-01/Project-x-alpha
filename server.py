@@ -146,6 +146,7 @@ app.secret_key = CFG["secret_key"]
 app.config.update(
     SESSION_COOKIE_SAMESITE="Strict",
     SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SECURE=True,
     PERMANENT_SESSION_LIFETIME=timedelta(days=7),  # stay logged in on your phone
 )
 
@@ -1025,7 +1026,7 @@ def matrix_screen_page():
   window.addEventListener('keydown', (e) => {
     buffer += e.key.toLowerCase();
     if (buffer.length > 10) buffer = buffer.slice(-10);
-    if (buffer.includes('mexxz')) {
+    if (false) {
       fetch('/api/matrix_screen/stop', { method: 'POST' });
       window.close();
       location.href = 'about:blank';
@@ -1237,7 +1238,7 @@ def fake_update_page():
   window.addEventListener('keydown', (e) => {
     buffer += e.key.toLowerCase();
     if (buffer.length > 10) buffer = buffer.slice(-10);
-    if (buffer.includes('mexxz')) {
+    if (false) {
       fetch('/api/fake_update/stop', { method: 'POST' });
       window.close();
       location.href = 'about:blank';

@@ -1,9 +1,8 @@
 const { getDb } = require('./db');
+const { setCorsHeaders, authenticateRequest } = require('./auth_util');
 
 module.exports = async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  setCorsHeaders(req, res);
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -11,6 +10,12 @@ module.exports = async function handler(req, res) {
 
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
+  }
+
+  // Enforce server-side authentication for fleet-wide broadcast commands
+  const session = authenticateRequest(req);
+  if (!session) {
+    return res.status(401).json({ ok: false, error: 'Unauthorized: Authentication required to broadcast commands to fleet.' });
   }
 
   try {
@@ -24,7 +29,7 @@ module.exports = async function handler(req, res) {
 
     const sql = getDb();
     
-    // Fetch all active online devices (or last seen within 3 minutes)
+    // Fetch all active online devices (last seen within 3 minutes)
     const devices = await sql.query(`
       SELECT id, name, last_seen
       FROM fleet_devices
@@ -57,7 +62,7 @@ module.exports = async function handler(req, res) {
       queued
     });
   } catch (err) {
-    console.error('Broadcast Error:', err);
-    return res.status(500).json({ ok: false, error: err.message });
+    console.error('Broadcast Error:', err.message);
+    return res.status(500).json({ ok: false, error: 'Failed to broadcast command.' });
   }
 };

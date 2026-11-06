@@ -1,12 +1,17 @@
 const { getDb, initSchema } = require('./db');
+const { setCorsHeaders, authenticateRequest } = require('./auth_util');
 
 module.exports = async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  setCorsHeaders(req, res);
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
+  }
+
+  // Enforce server-side authentication for accessing devices
+  const session = authenticateRequest(req);
+  if (!session) {
+    return res.status(401).json({ ok: false, error: 'Authentication required to access fleet devices.' });
   }
 
   try {
@@ -65,7 +70,7 @@ module.exports = async function handler(req, res) {
       last_seen: d.last_seen
     });
   } catch (err) {
-    console.error('Stats API error:', err);
-    return res.status(500).json({ error: err.message });
+    console.error('Stats API error:', err.message);
+    return res.status(500).json({ ok: false, error: 'Failed to retrieve telemetry data.' });
   }
 };

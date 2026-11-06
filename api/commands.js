@@ -1,10 +1,9 @@
 const { getDb, initSchema } = require('./db');
+const { setCorsHeaders, authenticateRequest } = require('./auth_util');
 const crypto = require('crypto');
 
 module.exports = async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  setCorsHeaders(req, res);
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -20,7 +19,7 @@ module.exports = async function handler(req, res) {
       const commandId = String(req.query.id || req.query.command_id || '').trim();
       const isPoll = req.query.poll === '1' || req.query.poll === 'true';
 
-      // Agent polling for next work item
+      // Agent polling for work (agent workers poll with device_id)
       if (isPoll && deviceId) {
         const rows = await sql.query(
           `SELECT id, device_id, command, payload, status, created_at
@@ -42,7 +41,13 @@ module.exports = async function handler(req, res) {
         return res.status(200).json({ ok: true, command: null });
       }
 
-      // Query single command status (for UI wait)
+      // Querying commands or inspection requires user authentication
+      const session = authenticateRequest(req);
+      if (!session) {
+        return res.status(401).json({ ok: false, error: 'Authentication required to inspect command history.' });
+      }
+
+      // Query single command status
       if (commandId) {
         const rows = await sql.query(
           `SELECT id, device_id, command, payload, status, result, created_at, completed_at
@@ -72,11 +77,11 @@ module.exports = async function handler(req, res) {
       return res.status(400).json({ error: 'device_id or id parameter required.' });
     }
 
-    // 2. POST: Queue a new command (from UI) or return execution result (from PC Agent)
+    // 2. POST: Queue a new command (from UI - AUTH REQUIRED) or return execution result (from PC Agent)
     if (req.method === 'POST') {
       const body = req.body || {};
 
-      // A: Agent returning execution result
+      // A: Agent returning execution result (Agent reporting)
       if (body.action === 'result' || (body.command_id && (body.result !== undefined || body.error !== undefined))) {
         const cmdId = String(body.command_id || body.id || '').trim();
         const status = body.status === 'failed' || body.error ? 'failed' : 'completed';
@@ -94,7 +99,12 @@ module.exports = async function handler(req, res) {
         return res.status(200).json({ ok: true, msg: 'Execution result saved.' });
       }
 
-      // B: Queue new command for a remote PC
+      // B: Queue new sensitive command for a remote PC (STRICT AUTHENTICATION & AUTHORIZATION)
+      const session = authenticateRequest(req);
+      if (!session) {
+        return res.status(401).json({ ok: false, error: 'Unauthorized: Authentication required to trigger remote device commands.' });
+      }
+
       const deviceId = String(body.device_id || body.target || '').trim();
       const command = String(body.command || body.action || '').trim().toLowerCase();
       const payload = JSON.stringify(body.payload || body.args || {});
@@ -120,7 +130,7 @@ module.exports = async function handler(req, res) {
 
     return res.status(405).json({ error: 'Method Not Allowed' });
   } catch (err) {
-    console.error('Commands API Error:', err);
-    return res.status(500).json({ ok: false, error: err.message || 'Internal Server Error' });
+    console.error('Commands API Error:', err.message);
+    return res.status(500).json({ ok: false, error: 'Failed to process command.' });
   }
 };

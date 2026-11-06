@@ -1,9 +1,8 @@
 const { getDb, initSchema } = require('./db');
+const { setCorsHeaders, authenticateRequest } = require('./auth_util');
 
 module.exports = async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  setCorsHeaders(req, res);
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -13,8 +12,13 @@ module.exports = async function handler(req, res) {
     await initSchema();
     const sql = getDb();
 
-    // 1. GET: Fetch latest screen snapshot of target device
+    // 1. GET: Fetch latest screen snapshot of target device (AUTH REQUIRED)
     if (req.method === 'GET') {
+      const session = authenticateRequest(req);
+      if (!session) {
+        return res.status(401).json({ ok: false, error: 'Unauthorized: Authentication required to view screen captures.' });
+      }
+
       const deviceId = String(req.query.device_id || '').trim();
       if (!deviceId) return res.status(400).json({ error: 'device_id required' });
 
@@ -46,7 +50,7 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    // 2. POST: Agent uploading screen capture
+    // 2. POST: Agent uploading screen capture (Agent worker upload)
     if (req.method === 'POST') {
       const body = req.body || {};
       const deviceId = String(body.device_id || '').trim();
@@ -70,7 +74,7 @@ module.exports = async function handler(req, res) {
 
     return res.status(405).json({ error: 'Method Not Allowed' });
   } catch (err) {
-    console.error('Screen API Error:', err);
-    return res.status(500).json({ ok: false, error: err.message || 'Internal Server Error' });
+    console.error('Screen API Error:', err.message);
+    return res.status(500).json({ ok: false, error: 'Internal Server Error' });
   }
 };

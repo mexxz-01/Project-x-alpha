@@ -45,11 +45,11 @@ module.exports = async function handler(req, res) {
 
       const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
 
-      if (!id || (!host_url && !tunnel_url)) {
-        return res.status(400).json({ error: 'Device ID and reachable URL (host_url or tunnel_url) are required.' });
+      if (!id) {
+        return res.status(400).json({ error: 'Device ID is required.' });
       }
 
-      const activeUrl = tunnel_url || host_url;
+      const activeUrl = tunnel_url || host_url || 'cloud-managed';
 
       await sql.query(
         `
@@ -57,8 +57,8 @@ module.exports = async function handler(req, res) {
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'online', NOW(), $11::jsonb)
         ON CONFLICT (id) DO UPDATE SET
           name = EXCLUDED.name,
-          host_url = EXCLUDED.host_url,
-          tunnel_url = EXCLUDED.tunnel_url,
+          host_url = COALESCE(NULLIF(EXCLUDED.host_url, ''), fleet_devices.host_url),
+          tunnel_url = COALESCE(NULLIF(EXCLUDED.tunnel_url, ''), fleet_devices.tunnel_url),
           public_ip = EXCLUDED.public_ip,
           lan_ip = EXCLUDED.lan_ip,
           port = EXCLUDED.port,

@@ -5,7 +5,7 @@
 # =========================================================================
 
 param(
-    [string]$ReportUrl = $env:TUNNEL_REPORT_URL,
+    [string]$ReportUrl = $(if ($env:TUNNEL_REPORT_URL) { $env:TUNNEL_REPORT_URL } else { "https://project-x-alpha-lake.vercel.app/api/devices" }),
     [string]$CustomName = ""
 )
 

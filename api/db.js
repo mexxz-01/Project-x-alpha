@@ -17,7 +17,7 @@ async function initSchema() {
     CREATE TABLE IF NOT EXISTS fleet_devices (
       id VARCHAR(64) PRIMARY KEY,
       name VARCHAR(255) NOT NULL,
-      host_url TEXT NOT NULL,
+      host_url TEXT,
       tunnel_url TEXT,
       public_ip VARCHAR(64),
       lan_ip VARCHAR(64),
@@ -28,6 +28,27 @@ async function initSchema() {
       status VARCHAR(32) DEFAULT 'online',
       last_seen TIMESTAMPTZ DEFAULT NOW(),
       metadata JSONB DEFAULT '{}'::jsonb
+    );
+  `);
+
+  await sql.query(`
+    CREATE TABLE IF NOT EXISTS fleet_commands (
+      id VARCHAR(64) PRIMARY KEY,
+      device_id VARCHAR(64) NOT NULL,
+      command VARCHAR(64) NOT NULL,
+      payload JSONB DEFAULT '{}'::jsonb,
+      status VARCHAR(32) DEFAULT 'pending',
+      result JSONB DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      completed_at TIMESTAMPTZ
+    );
+  `);
+
+  await sql.query(`
+    CREATE TABLE IF NOT EXISTS fleet_screens (
+      device_id VARCHAR(64) PRIMARY KEY,
+      image_data TEXT NOT NULL,
+      updated_at TIMESTAMPTZ DEFAULT NOW()
     );
   `);
   schemaInitialized = true;

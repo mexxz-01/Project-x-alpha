@@ -17,7 +17,34 @@
 
 ---
 
+> [!CAUTION]
+> ### ⚠️ LEGAL DISCLAIMER & TERMS OF USE
+> **This project is strictly developed and maintained for personal device administration, remote management of user-owned hardware, and educational/research purposes only.**
+>
+> - **Zero Liability:** The author (**mexxz-01**) assumes **absolutely no responsibility or liability** for any damages, unauthorized access, computer interference, misuse, or illegal activities conducted with this software, its binaries, or this codebase.
+> - **Compliance & Authorization:** Users must strictly comply with all applicable local, national, and international laws, including computer fraud, cybersecurity, and data protection legislation. You must never deploy, execute, or operate this program on any computer system, device, or network that you do not personally own or without explicit, documented permission from the device owner.
+> - **Educational Notice:** Created exclusively for personal use and educational learning in systems architecture, cloud orchestration, and remote administration.
+
+---
+
 </div>
+
+## ☁️ 24/7 Serverless Edge Cloud Architecture (Zero Port-Forwarding)
+
+Project-X-Nano operates on a **24/7/365 Serverless Cloud Infrastructure** backed by **Vercel Global Edge** and **Neon Serverless Postgres**:
+
+- **Does the Cloud Server Run 24/7?**  
+  **Yes, absolutely.** The cloud backend (`https://project-x-alpha-lake.vercel.app`) runs continuously in the cloud on enterprise serverless infrastructure with 99.99% uptime. It does not depend on your personal computer remaining on to stay active.
+- **Automatic PC Auto-Connect:**  
+  The moment the PC powers on or connects to the internet, the background agent connects **outbound** over HTTPS to the 24/7 cloud coordinator.
+- **Zero Port-Forwarding / NAT Bypass:**  
+  No router configuration, port-forwarding rules, UPnP, or static IPs are ever required. Because all traffic is outbound over port 443, it bypasses cellular hotspots, CGNAT, firewalls, and office/home routers automatically.
+- **Reverse Command Queue:**  
+  Execute remote commands (Lock, Sleep, Restart, Shutdown, Matrix Lock, Fake Update, Remote Terminal, and Live Screen capture) from your phone or browser anywhere in the world. Commands are queued in Neon Postgres and executed natively on the PC with sub-second latency.
+
+> **24/7 Live Cloud Console:** [https://project-x-alpha-lake.vercel.app](https://project-x-alpha-lake.vercel.app)
+
+---
 
 ## ⚡ 1-Line Universal Setup (Run on Any Windows PC)
 

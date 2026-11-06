@@ -125,13 +125,14 @@ public class MainActivity extends Activity {
         initWebView();
         startStatusPulse();
 
-        // Load saved host configuration
-        currentServer = prefs.getString(KEY_SERVER_URL, "");
+        // Load saved host configuration (Default to 24/7 Cloud Serverless Backend)
+        currentServer = prefs.getString(KEY_SERVER_URL, "https://project-x-alpha-lake.vercel.app");
         currentPassword = prefs.getString(KEY_PASSWORD, "");
 
-        if (!currentServer.isEmpty()) {
-            editServerUrl.setText(currentServer);
+        if (currentServer.isEmpty() || currentServer.contains("localhost") || currentServer.contains("127.0.0.1")) {
+            currentServer = "https://project-x-alpha-lake.vercel.app";
         }
+        editServerUrl.setText(currentServer);
         if (!currentPassword.isEmpty()) {
             editPassword.setText(currentPassword);
         }

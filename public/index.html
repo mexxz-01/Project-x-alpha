@@ -1672,9 +1672,9 @@ let gDeviceId = localStorage.getItem('pxn_device_id') || ('dev_' + Math.random()
 localStorage.setItem('pxn_device_id', gDeviceId);
 
 async function login() {
-  const pwInput = $(\'pw\');
-  const remember = $(\'chkRemember\') ? $(\'chkRemember\').checked : true;
-  const btn = $(\'btnLoginSubmit\');
+  const pwInput = $('pw');
+  const remember = $('chkRemember') ? $('chkRemember').checked : true;
+  const btn = $('btnLoginSubmit');
 
   const pw = pwInput ? pwInput.value.trim() : '';
 

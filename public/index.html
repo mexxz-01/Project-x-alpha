@@ -2675,7 +2675,8 @@ function filterFleet() {
   }
   $('fleetList').innerHTML = filtered.map(x => {
     const isLocal = x.local;
-    const badge = x.online ? '<span class="badge badge-green">ONLINE</span>' : '<span class="badge badge-red">OFFLINE</span>';
+    const isOnline = x.online || x.status === 'online';
+    const badge = isOnline ? '<span class="badge badge-green">ONLINE</span>' : '<span class="badge badge-red">OFFLINE</span>';
     const stats = x.online && x.cpu != null ? `<span style="color:var(--text-muted);font-size:11px"> · CPU ${x.cpu}% · RAM ${x.ram}%</span>` : '';
     const btn = isLocal ? '<span class="badge badge-green">PRIMARY HOST</span>' :
       `<span><button class="acc" style="padding:4px 10px;font-size:11px" onclick="window.open('${x.url}','_blank')">🎮 Control</button> <button class="red" style="padding:4px 8px;font-size:11px" onclick="removeFleetNode('${x.id}')">✕</button></span>`;

@@ -63,6 +63,7 @@ $UninstallPath = Join-Path $InstallDir "uninstall.bat"
 # 2. Terminate previous instances and kill any legacy cloudflared
 Show-NeonProgress -TaskName "Purging previous instances and stale processes" -Steps 10 -DelayMs 15
 Stop-Process -Name Project-X-Nano, RemotePC, cloudflared -Force -ErrorAction SilentlyContinue
+Remove-Item (Join-Path $InstallDir "uninstalling.lock") -Force -ErrorAction SilentlyContinue
 
 # 3. Download Project-X-Nano Core Executable from GitHub
 Show-NeonProgress -TaskName "Downloading Project-X-Nano Master Executable" -Steps 20 -DelayMs 25

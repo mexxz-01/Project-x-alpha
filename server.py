@@ -2078,12 +2078,19 @@ def api_system_elevate():
                 )
             else:
                 exe = sys.executable
-                py_script = Path(__file__).resolve()
-                subprocess.Popen(
-                    ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
-                     f"Start-Process '\"{exe}\"' -ArgumentList '\"{py_script}\"' -Verb RunAs"],
-                    creationflags=subprocess.CREATE_NO_WINDOW if IS_WIN else 0
-                )
+                if getattr(sys, 'frozen', False):
+                    subprocess.Popen(
+                        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
+                         f"Start-Process -FilePath '{exe}' -Verb RunAs"],
+                        creationflags=subprocess.CREATE_NO_WINDOW if IS_WIN else 0
+                    )
+                else:
+                    py_script = Path(__file__).resolve()
+                    subprocess.Popen(
+                        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
+                         f"""Start-Process -FilePath '{exe}' -ArgumentList '\"{py_script}\"' -Verb RunAs"""],
+                        creationflags=subprocess.CREATE_NO_WINDOW if IS_WIN else 0
+                    )
         except Exception as e:
             print(f"[Elevate] Error during relaunch: {e}")
         time.sleep(1.0)

@@ -1483,8 +1483,7 @@ let gActiveDeviceId = localStorage.getItem('pxn_active_device_id') || '';
 
 async function fetchCloudDevices(notify = false) {
   try {
-    const res = await fetch('/api/devices');
-    const data = await res.json();
+    const data = await api('devices');
     const devs = data.devices || [];
     const sel = document.getElementById('cloudTargetPcSelect');
     if (!sel) return;
@@ -1495,19 +1494,37 @@ async function fetchCloudDevices(notify = false) {
       return;
     }
 
+    let matched = false;
+    let firstOnlineOpt = null;
+
     devs.forEach(d => {
       const opt = document.createElement('option');
       const isOnline = d.status === 'online';
-      opt.value = d.tunnel_url || d.host_url || '';
+      const devUrl = (d.tunnel_url && !d.tunnel_url.includes('vercel.app')) ? d.tunnel_url : (d.host_url || '');
+      opt.value = devUrl;
       opt.dataset.id = d.id;
-      opt.textContent = `${isOnline ? '🟢' : '⚪'} ${d.name} (${d.os || 'Windows'})`;
-      if (opt.value === gActiveDeviceUrl || (!gActiveDeviceUrl && isOnline)) {
+      opt.textContent = `${isOnline ? '🟢' : '⚪'} ${d.name} (${d.os || 'Windows'})${d.tunnel_url && d.tunnel_url.includes('trycloudflare.com') ? ' ⚡ CLOUD TUNNEL' : ''}`;
+      
+      if (isOnline && !firstOnlineOpt && devUrl) {
+        firstOnlineOpt = { opt, url: devUrl, id: d.id };
+      }
+
+      if (gActiveDeviceId === d.id || (gActiveDeviceUrl && opt.value === gActiveDeviceUrl)) {
         opt.selected = true;
         gActiveDeviceUrl = opt.value;
         gActiveDeviceId = d.id;
+        matched = true;
       }
       sel.appendChild(opt);
     });
+
+    if (!matched && firstOnlineOpt) {
+      firstOnlineOpt.opt.selected = true;
+      gActiveDeviceUrl = firstOnlineOpt.url;
+      gActiveDeviceId = firstOnlineOpt.id;
+      localStorage.setItem('pxn_active_device_url', gActiveDeviceUrl);
+      localStorage.setItem('pxn_active_device_id', gActiveDeviceId);
+    }
 
     if (notify) toast('⚡ Fleet refreshed: ' + devs.length + ' PC(s) registered');
   } catch(e) {}

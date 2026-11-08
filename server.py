@@ -161,10 +161,26 @@ def get_client_ip():
     return request.remote_addr or "127.0.0.1"
 
 
+@app.before_request
+def handle_options_cors():
+    if request.method == "OPTIONS":
+        resp = app.make_response(("", 204))
+        origin = request.headers.get("Origin", "*")
+        resp.headers["Access-Control-Allow-Origin"] = origin
+        resp.headers["Access-Control-Allow-Credentials"] = "true"
+        resp.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With, Cache-Control"
+        return resp
+
 @app.after_request
 def set_security_headers(response):
+    origin = request.headers.get("Origin")
+    if origin and ("vercel.app" in origin or "trycloudflare.com" in origin or "localhost" in origin or "127.0.0.1" in origin):
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With, Cache-Control"
     response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["X-Frame-Options"] = "SAMEORIGIN"
     response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     return response
@@ -220,21 +236,41 @@ def create_jwt_token(device_id: str, expires_in: int = 3600) -> str:
     return jwt.encode(payload, CFG["secret_key"], algorithm="HS256")
 
 def verify_jwt_token(token: str):
+    if not token or not isinstance(token, str):
+        return None
+    # 1. Standard HS256 JWT
     try:
         payload = jwt.decode(token, CFG["secret_key"], algorithms=["HS256"])
         device_id = payload.get("device_id")
-        if not device_id:
-            return None
-        devices = CFG.get("registered_devices", [])
-        for d in devices:
-            if d.get("id") == device_id:
-                if d.get("revoked", False):
-                    return None
-                d["last_active"] = time.strftime("%Y-%m-%d %H:%M:%S")
-                return payload
+        if device_id:
+            for d in CFG.get("registered_devices", []):
+                if d.get("id") == device_id:
+                    if d.get("revoked", False):
+                        return None
+                    d["last_active"] = time.strftime("%Y-%m-%d %H:%M:%S")
+                    return payload
         return payload
     except Exception:
-        return None
+        pass
+    # 2. Cloud Coordinator HMAC Token
+    try:
+        parts = token.split(".")
+        if len(parts) == 2:
+            data_b64, sig = parts
+            cloud_secret = os.environ.get("SECRET_KEY") or "pxn_secure_edge_hmac_secret_key_32chars_min"
+            import hmac, hashlib, base64
+            expected_sig = hmac.new(cloud_secret.encode("utf-8"), data_b64.encode("utf-8"), hashlib.sha256).digest()
+            expected_sig_b64 = base64.urlsafe_b64encode(expected_sig).decode("ascii").rstrip("=")
+            if hmac.compare_digest(sig, expected_sig_b64):
+                pad = len(data_b64) % 4
+                if pad: data_b64 += "=" * (4 - pad)
+                payload = json.loads(base64.urlsafe_b64decode(data_b64).decode("utf-8"))
+                if payload.get("exp") and payload["exp"] < time.time():
+                    return None
+                return payload
+    except Exception:
+        pass
+    return None
 
 def login_required(fn):
     @wraps(fn)

